@@ -1,5 +1,5 @@
-// set the measurement units to Points, so our math lower down will work out
-app.scriptPreferences.measurementUnit = MeasurementUnits.POINTS;
+//设置毫米单位。
+app.scriptPreferences.measurementUnit = MeasurementUnits.MILLIMETERS;
 
 // set the ruler to "spread", again so our math works out.
 oldOrigin = app.activeDocument.viewPreferences.rulerOrigin // save old ruler origin
@@ -20,36 +20,36 @@ var textLayer = app.activeDocument.layers.add({name:'Text'})
 var SFXLayer = app.activeDocument.layers.add({name:'SFX'})
 
 // This reuses the function from the "match art frame to page size plus bleed" script
-// 
+// 给图框设置成文档设置的出血量
 function matchFrameToPageSize(theFrame) {
     if (app.activeDocument.documentPreferences.pageBinding == PageBindingOptions.leftToRight) { // if the book's laid out left-to-right
         if (theFrame.parentPage.index % 2 == 0) { // if we’re on a left-side page
             theFrame.geometricBounds = [
-                theFrame.parentPage.bounds[0] - 9, // Same, but for right-side pages
-                theFrame.parentPage.bounds[1] - 9, 
-                theFrame.parentPage.bounds[2] + 9, 
+                theFrame.parentPage.bounds[0] - app.activeDocument.documentPreferences.documentBleedTopOffset, // Same, but for right-side pages
+                theFrame.parentPage.bounds[1] - app.activeDocument.documentPreferences.documentBleedBottomOffset, 
+                theFrame.parentPage.bounds[2] + app.activeDocument.documentPreferences.documentBleedOutsideOrRightOffset, 
                 theFrame.parentPage.bounds[3] + 0];
         } else { // we must be on a right-side page
             theFrame.geometricBounds = [
-                theFrame.parentPage.bounds[0] - 9, // Adjust the dimensions to give 1/8" bleed on right-side pages
+                theFrame.parentPage.bounds[0] - app.activeDocument.documentPreferences.documentBleedTopOffset, // Adjust the dimensions to give 1/8" bleed on right-side pages
                 theFrame.parentPage.bounds[1] - 0, // 
-                theFrame.parentPage.bounds[2] + 9, 
-                theFrame.parentPage.bounds[3] + 9];
+                theFrame.parentPage.bounds[2] + app.activeDocument.documentPreferences.documentBleedOutsideOrRightOffset, 
+                theFrame.parentPage.bounds[3] + app.activeDocument.documentPreferences.documentBleedInsideOrLeftOffset];
         }
        
         } 
     else { // if the book is laid out right-to-left
         if (theFrame.parentPage.index % 2 == 0) { // if we’re on a right-side page
             theFrame.geometricBounds = [
-                theFrame.parentPage.bounds[0] - 9, // Adjust the dimensions to give 1/8" bleed
+                theFrame.parentPage.bounds[0] - app.activeDocument.documentPreferences.documentBleedTopOffset, // Adjust the dimensions to give 1/8" bleed
                 theFrame.parentPage.bounds[1] + 0, // on right-side pages
-                theFrame.parentPage.bounds[2] + 9, 
-                theFrame.parentPage.bounds[3] + 9];
+                theFrame.parentPage.bounds[2] + app.activeDocument.documentPreferences.documentBleedOutsideOrRightOffset, 
+                theFrame.parentPage.bounds[3] + app.activeDocument.documentPreferences.documentBleedInsideOrLeftOffset];
         } else { // we must be on a left-side page
             theFrame.geometricBounds = [
-                theFrame.parentPage.bounds[0] - 9, // Same, but for right-side pages
-                theFrame.parentPage.bounds[1] - 9, 
-                theFrame.parentPage.bounds[2] + 9, 
+                theFrame.parentPage.bounds[0] - app.activeDocument.documentPreferences.documentBleedTopOffset, // Same, but for right-side pages
+                theFrame.parentPage.bounds[1] - app.activeDocument.documentPreferences.documentBleedBottomOffset, 
+                theFrame.parentPage.bounds[2] + app.activeDocument.documentPreferences.documentBleedOutsideOrRightOffset, 
                 theFrame.parentPage.bounds[3] + 0];
         }
     }
@@ -57,25 +57,42 @@ function matchFrameToPageSize(theFrame) {
 
 
 // Set up master page object for convenience
-theMaster = app.activeDocument.masterSpreads.itemByName('A-主页')
+theMaster = app.activeDocument.masterSpreads[0]
+//查找第一页有没有图框，没有则去主页里新建一个图框
+getFrame(app.activeDocument.pages[0], artLayer);
 
-// Place art boxes at 100% of page size
-for (var i=0; i < theMaster.pages.length; i++) {
-    thisRect = theMaster.pages[i].rectangles.add( // create a rect on the art layer of the current page
-        app.activeDocument.layers.itemByName('Art'),  // art layer
-        LocationOptions.AT_BEGINNING, // inside the beginning of the list of objects 
-        theMaster.pages[i],  // with the current page as the reference object
-        {
-            name: 'ArtFrame',
-            layer: app.activeDocument.layers.itemByName('Art'), 
-            geometricBounds: theMaster.pages[i].bounds, 
-            contentType: ContentType.GRAPHIC_TYPE, // make sure to specify that this is a graphic container
-        }) 
-        //加载了空框架之后设置适合选项
-    thisRect.frameFittingOptions.fittingAlignment = AnchorPoint.CENTER_ANCHOR;
-    thisRect.frameFittingOptions.fittingOnEmptyFrame = EmptyFrameFittingOptions.FILL_PROPORTIONALLY;
-    matchFrameToPageSize(thisRect) // extend boxes to bleed
+function getFrame(page, layer) {
+    var targetFrame = null;
+
+    var findFrame = function(arr, ignoreLayer) {
+        var returnVal = null;
+        // iterate backwards because it's most likely on the bottom
+        for (var i = arr.length; i > -1; i-- && returnVal === null) {
+            // only grab an object if it's a Rectangle on a non-locked layer
+            if (arr[i] && arr[i] instanceof Rectangle &&
+                !arr[i].itemLayer.locked &&
+                (ignoreLayer || arr[i].itemLayer == layer)) { // if using an element from a master, don't be picky about the layer
+                returnVal = arr[i];
+            }
+        }
+        return returnVal;
+    }
+
+    // 检查是否有主页，覆盖主页并使用那里的框架
+    if (page.appliedMaster !== null && page.appliedMaster.isValid) {
+        var masterFrame = findFrame(page.masterPageItems, true); // 查找一个图框，但不挑剔它所在的图层
+        targetFrame = masterFrame && masterFrame.isValid ?
+            masterFrame.override(page) : null;
+    };
+        // 检查 Art 图层底部是否有矩形
+    if (targetFrame === null) targetFrame = findFrame(page.allPageItems);
+        // 如果没有图框，也没有主页图框，主页创建一个图框
+    if (targetFrame === null) 
+        newtwoboxs();
+    return targetFrame;
 }
+
+
 
 /// THIS IS EXTREMELY FRAGILE AND EXPERIMENTAL, but: 
 // this is also the beginning of a script that will place artwork automatically in a layout
@@ -98,6 +115,28 @@ but I don't feel like figuring out how to make fileList more cleanly recursive r
 
 // create an external variable we'll use to keep track of the highest-numbered page
 var lastPage = 0
+
+function newtwoboxs() {
+    for (var i = 0; i < theMaster.pages.length; i++) {
+        thisRect = theMaster.pages[i].rectangles.add(
+            app.activeDocument.layers.itemByName('Art'), // art layer
+            LocationOptions.AT_BEGINNING, // inside the beginning of the list of objects 
+            theMaster.pages[i], // with the current page as the reference object
+            {
+                name: 'ArtFrame',
+                layer: app.activeDocument.layers.itemByName('Art'),
+                geometricBounds: theMaster.pages[i].bounds,
+                contentType: ContentType.GRAPHIC_TYPE, // make sure to specify that this is a graphic container
+            });
+        //加载了空框架之后设置适合选项
+        thisRect.frameFittingOptions.fittingAlignment = AnchorPoint.CENTER_ANCHOR;
+        thisRect.frameFittingOptions.fittingOnEmptyFrame = EmptyFrameFittingOptions.FILL_PROPORTIONALLY;
+        //设置空框架的描边为无颜色
+        thisRect.strokeWeight = 0;
+        matchFrameToPageSize(thisRect); // 图框加大到出血线
+    }
+    return i;
+}
 
 function findArtFiles(fileList) { // add files whose names match singlePgMatchExpr to the artFileArr array
     var foundFiles = []
@@ -126,7 +165,7 @@ function addPagesUpToSignature(highestPage) {
         app.activeDocument.pages.add(
             LocationOptions.AT_END,
             {
-                appliedMaster: app.activeDocument.masterSpreads.itemByName('A-主页')
+                appliedMaster: app.activeDocument.masterSpreads[0]
             }
         )
     }
@@ -177,8 +216,6 @@ if (app.activeDocument.layers.itemByName('Guides') == null ) {
     app.activeDocument.layers.add({name:'Guides'}) 
 }
 
-// Set up master page object for convenience
-theMaster = app.activeDocument.masterSpreads.itemByName('A-主页')
 
 // Add top margin guide
 theMaster.guides.add(
@@ -242,6 +279,8 @@ theMaster.guides.add(
 
 // Add B-Master and set it to inherit from A-Master
 var theBMaster = app.activeDocument.masterSpreads.add(2, {
+    namePrefix:"P",
+    baseName:"页码",
     appliedMaster: theMaster, // set it to inherit from A-Master  
 })
 
