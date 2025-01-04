@@ -1,7 +1,7 @@
 # Manga Scripts for Indesign
 
 Herewith please avail yourself of this package of InDesign automations aimed at decreasing drudgery and imprecision when lettering Japanese comics in English.
-
+脚本安装位置C:\Users\xxx\AppData\Roaming\Adobe\InDesign\Version 20.0-J\zh_CN\Scripts\Scripts Panel
 ***
 ## Important Note
 
