@@ -11,8 +11,12 @@ function readAndParseTxtFile(filePath) {
     var content = file.read();
     var replacements = {
         "！": "!",
-        "？": "?",
-        "——": "—"
+        "！？": "?!",
+        "干嘛": "干吗",
+        "混蛋": "浑蛋",
+        "叮铃": "丁零",
+        "——": "—",
+        "~": "～"
     };
     
     var content = replaceMultipleWords(content, replacements);
@@ -98,18 +102,18 @@ function applyStylesBasedOnGroup(doc, textFrame, group) {
         case 1:
             paragraphStyleName = "框内";
             characterStyleName = "字符样式1";
-            objectStyleName = "文本框居中-垂直";
+            objectStyleName = "文本框居中-垂直-自动缩框";
             break;
         case 2:
             paragraphStyleName = "框外";
             characterStyleName = "字符样式2";
-            objectStyleName = "对象样式 2";
+            objectStyleName = "文本框居中-垂直-自动缩框";
             break;
         // 根据需求添加更多分组和样式
         default:
             paragraphStyleName = "[基本段落]";
             characterStyleName = "[无]";
-            objectStyleName = "[基本文本框架]";
+            objectStyleName = "文本框居中-垂直-自动缩框";
     }
 
     // 应用段落样式
@@ -158,8 +162,8 @@ function insertTextOnPageByTxtEntry(entry, doc) {
     // 将坐标百分比转换为绝对坐标
     var coordinates = convertPercentToAbsoluteCoordinates(page, entry.position[0], entry.position[1]);
     var textFrame = page.textFrames.add();
-    textFrame_x = 18;//设置文本框大小
-    textFrame_y = 23;
+    textFrame_x = 10;//设置文本框大小
+    textFrame_y = 25;
     textFrame.geometricBounds = [coordinates[1], coordinates[0]-textFrame_x/2, coordinates[1] + textFrame_y, coordinates[0] + textFrame_x];
     textFrame.contents = entry.text;
     textFrame.parentStory.storyPreferences.storyOrientation = StoryHorizontalOrVertical["VERTICAL"];

@@ -33,7 +33,7 @@ function isError(obj) {
 
 // replaces the first space with a line break
 function removeBreaks(textFrame) {
-    return textFrame.contents.trim().replace(/\n/g, '');
+    return textFrame.contents.trim().replace(/\n|\r/g, '');
 }
 
 if (!String.prototype.trim) {

@@ -7,7 +7,7 @@ function encloseTextInAngleBrackets(obj)
         return function () {
             for (var i = 0; i < obj.length; i++) { // iterate over every item in the selection
                 if (obj[i] instanceof TextFrame) { // if the current item is a textframe
-                    obj[i].contents = '[' + obj[i].contents + ']' // bracket it
+                    obj[i].contents = '（' + obj[i].contents + '）' // bracket it
                 }
             }
         }

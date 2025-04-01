@@ -1,121 +1,129 @@
-# Manga Scripts for Indesign
+# 漫画排版 InDesign 脚本集
 
-Herewith please avail yourself of this package of InDesign automations aimed at decreasing drudgery and imprecision when lettering Japanese comics in English.
+本套 InDesign 自动化脚本旨在减少日漫英译排版中的重复劳动和误差。
 ***
-脚本安装位置C:\Users\xxx\AppData\Roaming\Adobe\InDesign\Version 20.0-J\zh_CN\Scripts\Scripts Panel
+脚本安装路径：`C:\Users\xxx\AppData\Roaming\Adobe\InDesign\Version 20.0-J\zh_CN\Scripts\Scripts Panel`
+
+在脚本窗口中右键用户文件夹打开资源管理器把本项目放在`Scripts Panel`文件夹下
 ***
-## Important Note
+## 重要说明
 
-**These scripts are designed to be used together as a package.** Most of them make use of functions defined in the `Library/KTUlib.jsx` file, and they rely both on being able to assume that file's location and their own location. Wherever you prefer to install the scripts, you need to make a `Library` folder there and place `KTUlib.jsx` inside it. If this is incompatible with your workflow, let me know and I can help you create standalone versions of the scripts you need.
+**这些脚本需作为套件配合使用。** 大多数脚本依赖 `Library/KTUlib.jsx` 文件中的函数，需确保该文件与脚本处于同级目录。安装时请先创建 `Library` 文件夹并放入 `KTUlib.jsx`。如需独立版脚本，请联系原作者。
 
-**To download the complete package**, click the green **Code** button above the file list, and select "Download Zip." Unzip the archive at the top level of your InDesign script folder and you'll be in business.
+**完整包下载方式**：点击文件列表上方的绿色 **Code** 按钮，选择 "Download Zip"。解压到 InDesign 脚本文件夹根目录即可使用。
 ***
-# The Scripts in this Package
-## Document Setup
+# 新增汉化专用脚本
+* 1.开局新建图层图框.jsx
+* 2.导入三个样式.jsx
+* 3.LabelPlusTXT导入ID
+* 4.放置图像
+* 5.导出脚本：1400分辨率（印刷tif图），72分辨率png（源文件是web用jpg），前三页彩页分辨率600的RGB
+## 文本修改
+* 自动断句脚本：支持中文断句，根据不同断句逻辑分6个风格，选一个合适的，支持多选文本框。
+* 移到前一行：光标放在行首，将第一个字符移到前一行，用于快速修改断句。
+* 文章转框架做蒙版.js 选中一个文本框脚本将其复制到剪贴板，同一个位置新建框架，根据提示粘贴到内部。之后可以用钢笔修改锚点制作简单的文字蒙版。
+* 括号：自动包裹括号脚本新增简中适用的括号形式。插入是在文字左右插入，包裹作用于整个文本框。
+* 自动加拼音：用圆括号（）包裹的文本作为拼音，以行为单位自动在括号前面的文字上添加拼音，自动调整行距144%。
+* 自动着重号：用【】（）等括号包裹的文本作为加重音文字，对其内容加着重号，自动调整行距144%。
+* 黑白字转换：对文字颜色进行翻转，效果包括填充&描边&外发光&编组对象的填充&描边。
+* 收集文档中的文本带坐标导出ID2LPtxt.jsx 全部嵌字完用，在桌面上导出一个LPtxt，包括字体字号位置坐标。
+* 选中转水平注释：文本框内选中一段话，转为水平注释。（需要提前导入水平注释的样式）
 
-**Add Guides and Pages Numbers** adds horizontal and vertical guides to the A-Master page, and creates a B-Master page with page numbers already placed.
+# 原版英化脚本功能说明
+## 文档初始化
 
-**Initialize Document** should be run immediately after creating a new document at the desired trim size. This script:
-1. Creates separate layers for guides, text, SFX, page numbers, retouching, design, and art, in that order.
-2. Creates A- and B-master pages.
-3. Places guides on the A-master page, and sets the B-master page to inhert the A-master.
-4. Places art frames sized to the trim size on the A-master page.
-5. Places automatic page numbers on the B-master page.
-6. Prompts the user for a folder to search for page art assets (a folder of subfolders may be selected; the file-search algorithm is recursive)
-7. Parses the art asset filenames to determine page order and book length
-8. Adds a number of pages to the document equal to the highest identified page rounded up to the nearest 16-page signature.
-9. Places each art file in the art frame of the corresponding page.
+**添加参考线与页码**：在 A-母版页添加水平/垂直参考线，创建带页码的 B-母版页。
 
-## Art Placement
+**初始化文档**：新建文档后立即运行，功能包括：
+1. 创建分层：参考线、文字、特效、页码、修图、设计、画稿（自下而上）
+2. 创建 A/B 母版页
+3. 在 A-母版设置参考线，B-母版继承 A-母版
+4. 在 A-母版放置裁切尺寸的画框
+5. 在 B-母版添加自动页码
+6. 提示选择画稿素材文件夹（支持嵌套子文件夹递归搜索）
+7. 解析文件名确定页面顺序和总页数
+8. 添加页面至最近的 16 页倍数
+9. 自动将画稿置入对应页面的画框
 
-**Create Master Page Art Frames** creates two empty graphics frames on the _A-Master_ master page, sized to the page size plus 1/8" bleed on the outer edges. This is useful for setting up container frames that page artwork will later be dropped into. The container frames will inherit various attributes from the frames on the master page, which is useful for bulk adjusting the scale and placement of the art frames throughout the document.
+## 画稿处理
 
-**Move All Graphics to Art Layer** moves all graphic frames in the document to the bottom-most layer.
+**创建母版画框**：在 A-母版页创建两个出血边距（外边缘 1/8 英寸）的画框，用于统一管理全文档画框属性。
 
-**Move Page Graphics to Art Layer** moves all graphic frames on the current page to the bottom-most layer.
+**全文档画稿移至底层**：移动所有画框至最底层。
 
-**Auto-Place Art From Folder** is extremely fragile, but currently does allow you to specify a folder from which art whose filenames matches a certain pattern will be automatically placed on the appropriate page. This is more for experimentation than it is for serious use.
+**当前页画稿移至底层**：仅移动当前页画框至底层。
 
-**Set Master Art Scaling** adjusts the master page graphic frames created using **Create Master Page Art Frames** in such a way as to affect the scaling of every image placed in one of the child graphic frames. This allows you to quickly find an appropriate scaling percentage for placed artwork _en masse_, without having to individually adjust every graphic frame. Please be advised of the following caveats:
+**自动置入画稿**：实验性功能，根据文件名匹配自动置入画稿（稳定性较差）。
 
-- The scaling percentage is applied based on the **current** scaling equalling 100%. This means if you set a scaling percentage of 80%, then decide that's too small and  re-run the script with a percentage of 90%, the art will get smaller again, because you are specifying a size that's 90% as big as the size that resulted from the first 80% scaling.
-- Because of certain assumptions the script makes, it will not be reliable unless used in conjunction with graphics frames placed using the **Create Master Page Art Frames** script.
-- Depending on your art assets, individual pages may need to have their scaling factor fine-tuned after this script is run. This script is meant to assist in arriving at a reasonable ballpark figure to start with.
-- Once you have adjusted an art frame manually, its relationship to the A-master art frame is broken and _it will no longer be affected by subsequent adjustments made with this script_.
+**母版画框比例调整**：批量调整通过母版画框创建的画框缩放比例（需注意以下限制）：
+- 基于当前 100% 比例进行调整
+- 需配合母版画框使用
+- 个别页面可能需要手动微调
+- 手动修改过的画框将脱离母版关联
 
-## Guide Placement
+## 参考线调整
 
-Despite its reputation for fanciful panel layouts, a given manga typically establishes and adheres to fairly rigid margins. Placing guides approximately in line with these margins makes a variety of layout tasks much easier and more accurate.
+**添加参考线**：在 A-母版页四周添加 1/2 英寸参考线。
 
-**Add Guides** places guide lines on the _A-Master_ page, 1/2" from the trim on every side. 
+**水平边距微调**：每次运行使跨页上下参考线靠近/远离 1pt。
 
-**Nudge Horizontal Margins In** moves the guides at the top and bottom of each spread 1pt closer to each other each time it is run. **Nudge Horizontal Margins Out** does the opposite.
+**垂直边距微调**：每次运行使跨页左右参考线靠近/远离 1pt。
 
-**Nudge Vertical Margins In** moves the guides at the left and right margins of both pages in a spread 1pt closer to each other each time it is run. **Nudge Vertical Margins Out** moves them away from each other.
+## 页码与装订
 
-## Pagination and Numbering
+**切换装订方向**：左开本/右开本切换。
 
-**Toggle Binding Direction** changes the binding direction of the document from right-to-left to left-to-right, and vice versa.
+**反向书页顺序**：整体反转文档页序（修复 Yen Press 式排版），注意首尾页内容可能错位。
 
-**Reverse Interior** reverses the spread order and binding direction of the entire document, i.e., it fixes Yen Press books. This takes a few seconds, so it displays a progress bar as it works. **Note:** A minor bug causes the contents of the very first and last pages to be mis-placed after reversal. Fixing this bug is not a high priority for yours truly, since manual correction is quite easy, and frankly I just reversed a whole volume of manga for you so I really think _you_ should be thanking _me_.
+**左/右页页码开关**：为当前跨页的左/右页应用/取消 B-母版页码样式。
 
-**Toggle Left Page Number** applies or un-applies the _B-Master_ page to the left-hand page of the current spread. The assumption here is that the letterer will have set up _B-Master_ to include an automatically-generated page number. Improving the script to simply do this for the letterer is a high priority. 
+## 文字特效
 
-**Toggle Right Page Number** applies or un-applies the _B-Master_ page to the left-hand page of the current spread.
+**字符渐大**：使文字逐字增大（音量增强效果）
 
-## Text Design
+**字符渐小**：使文字逐字缩小（音量减弱效果）
 
-These are a collections of scripts to aid in designing more expressive sound effect subtitles.
+**尖括号包裹**：用 < > 包裹选中文字
 
-**Escalate Characters** adjusts the text in a text frame such that each character is slightly larger than the character before it, such that the text appears to get "louder."
+**方括号包裹**：用 [ ] 包裹选中文字
 
-**De-Escalate Characters** adjusts the text in a text frame such that each character is slightly smaller than the character before it, such that the text appears to get "quieter."
+**中部膨胀**：文字中间大两端小
 
-**Enclose Text in Angle Brackets** wraps the text in a selected text frame in angle brackets, e.g. < >. 
+**中部收缩**：文字中间小两端大
 
-**Enclose Text in Brackets** wraps the text in a selected text frame in square brackets, e.g. [ ].
- 
-**Inflate Characters** makes the text in the selected text box larger towards the middle, and smaller at the ends. 
+**随机错位**：字符随机上下偏移
 
-**Deflate Characters** does the opposite, making the characters smaller towards the middle of the text, and larger at the ends
+**下行阶梯**：字符逐字降低基线
 
-**Jumble Characters** adjusts the characters of the text up and down by alternating and slightly random amounts.
+**上行阶梯**：字符逐字升高基线
 
-**Ramp Down Characters** adjusts the characters progressively lower with respect to the text's baseline for a stair-step effect.
-**Ramp Up Characters** does the same, but upwards.
+**随机旋转**：字符交替随机旋转
 
-**Rotate Characters** rotates each character in the text box by a slight random amount, alternating clockwise and counterclockwise directions.
+**垂直堆叠**：字符竖向排列（每字一行）
 
-**Stack Characters** stacks all of the text in a frame vertically, with a line break between each character
+![文字特效示例](文本特效/Text Design Examples.png)
 
-![example of the output of the various text design scripts](Text Design/Text Design Examples.png)
+## 其他工具
 
-## Et Cetera
+**新建右开本文档**：创建预设右开本的新文档（适用于旧版 InDesign）
 
-**Create New R-to-L Document** creates a new document with the binding direction set right-to-left. This may be useful for older versions of InDesign where the document's binding direction cannot be changed after it's created.
+**创建译注缩略图**：将选中对象创建为带样式的缩略图组（注：可能产生溢流文本错误）
 
-**Create Translation Note Graphic** creates a thumbnail for excerpting a section of a page in translation endnotes. To use this script, select every object that will appear—even partially—in the thumbnail, then run the script. It will move a grouped and framed copy of the selected objects to the clipboard, and create a "Translation Note Graphic" object style if one does not already exist. You can use this style to give the thumbnails a stroke (I recommend a stroke size of 1 point). **Note:** There seem to be circumstances wherein thumbnails created this way can generate overset text errors, and the author hasn't quite figured out why, yet.
+**查找空文本框**：定位未填写文字的文本框
 
-**Find Empty Text Frames** selects the next text frame that contains no text, and displays an alert if it finds none. This is useful for checking a finished book or section for missed lettering.
+**显示尺寸信息**：显示选中对象的几何边界（调试用）
 
-**Get Dimension** displays an alert with the current selection's geometric bounds. It is useful mostly as a diagnostic tool for scripting.
+**锁定/解锁全部对象**：全局锁定/解锁
 
-**Lock All Items** locks every item in the document.
+**选择左/右页内容**：选中当前跨页左/右页所有对象
 
-**Unlock All Items** unlocks every item in the document.
+**匹配画框尺寸**：调整选中画框至页面尺寸+出血边距（自动识别装订方向）
 
-**Select All On Left Page** selects all items on the left hand page of the current spread, irrespective of binding direction.
+**压缩文本行**：当前文本行水平缩放减少 5%（最小建议 80%）
 
-**Select All On Left Page** selects all items on the right hand page of the current spread, irrespective of binding direction.
+**取消换行**：删除选中文本框中的所有换行
 
-**Match Art Frame to Page Size** takes the current selection and adjusts the bounds of any object on the bottom-most layer to match the page size plus 1/8" bleed on non-spine edges. It ignores objects that are not in the bottom-most layer. In conjunction with the **Select All On Left/Right Page** scripts, it's a useful tool for quickly adjusting the placement of a lettered page layout. It can also be run after selecting all items in a spread. This script also takes pains to correctly account for binding direction.
-
-**Squeeze Line** reduces the horizontal scaling of the current line of text by 5%. This is useful for fitting text in narrow ballons. Note that the "current line" is defined as "whatever line the cursor is currently on." This script can be run repeatedly, although I generally avoid dipping below a scaling factor of 80%.
-
-**Unbreak Text** removes all line breaks from the currently selected text frame. This is useful for quickly returning to a clean slate when trying to fit text into a constrained space.
-
-## TODO
-
-- Add script that moves all text frames to Text layer.
-- Add setup scripts for common dialogue, caption, aside, and SFX paragraph styles
-- Add setup scripts for common character styles
+## 待实现功能
+- 移动全部文本框至文字图层
+- 制作LPtxt导入脚本的UI界面，并按页码对应文稿
+- 制作一个通用的批量脚本，有UI界面，可以选择批量处理的对象以及运用哪个脚本。
