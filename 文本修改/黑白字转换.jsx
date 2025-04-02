@@ -1,93 +1,182 @@
-/*
-    脚本功能：将选中的文本框内的黑色文字转换为白色，
-    白色文字转换为黑色，其它颜色保持不变。
-    
-    注意：
-    1. 脚本依赖文档中存在名为 "Black" 和 "White" 的色板，
-         否则会弹出提示并退出。
-    2. 为避免转换混乱，先将黑色文字先转换为临时色板，
-         然后将白色文字转换为黑色，再将临时颜色转换为白色。
-*/
+//#target indesign
 
-if (app.documents.length === 0) {
-        alert("请先打开一个文档");
-        exit();
-}
-
-var doc = app.activeDocument;
-if (app.selection.length === 0) {
-        alert("请先选择一个文本框");
-        exit();
-}
-
-var blackSwatch, whiteSwatch;
-try {
-        blackSwatch = doc.swatches.itemByName("Black");
-        // 尝试读取属性以确保该色板存在
-        var dummy = blackSwatch.name;
-} catch (e) {
-        // alert("文档中没有名为 'Black' 的色板");
-        exit();
-}
-try {
-        whiteSwatch = doc.swatches.itemByName("Paper");
-        var dummy = whiteSwatch.name;
-} catch (e) {
-        // alert("文档中没有名为 'White' 的色板");
-        exit();
-}
-
-// 创建或获取临时色板，用于中转黑色→白色的转换
-var tempSwatchName = "TempSwapColor";
-var tempSwatch;
-if (doc.swatches.itemByName(tempSwatchName).isValid) {
-        tempSwatch = doc.swatches.itemByName(tempSwatchName);
-} else {
-        try {
-                // 新建一个临时色板，颜色值不会影响后续转换
-                tempSwatch = doc.colors.add({ name: tempSwatchName, model: ColorModel.process, colorValue: [0, 0, 0, 0] });
-        } catch (e) {
-                alert("无法创建临时色板");
-                exit();
+/**
+ * 主函数 - 处理用户选择对象
+ */
+function main() {
+    try {
+        // 检查是否有选中对象
+        if (!app.documents.length || !app.selection || !app.selection.length) {
+            throw new Error("请先选中需要处理的对象");
         }
-}
 
-for (var i = 0; i < app.selection.length; i++) {
-        var selObj = app.selection[i];
-        if (selObj.constructor.name === "TextFrame") {
-                // 1. 将所有黑色文本替换为临时色板
-                app.findTextPreferences = NothingEnum.nothing;
-                app.changeTextPreferences = NothingEnum.nothing;
-                app.findTextPreferences.fillColor = blackSwatch;
-                var foundTexts = selObj.findText();
-                for (var j = 0; j < foundTexts.length; j++) {
-                        foundTexts[j].fillColor = tempSwatch;
-                }
-
-                // 2. 将所有白色文本替换为黑色
-                app.findTextPreferences = NothingEnum.nothing;
-                app.changeTextPreferences = NothingEnum.nothing;
-                app.findTextPreferences.fillColor = whiteSwatch;
-                foundTexts = selObj.findText();
-                for (var j = 0; j < foundTexts.length; j++) {
-                        foundTexts[j].fillColor = blackSwatch;
-                }
-
-                // 3. 将临时色板（原来是黑色的）替换为白色
-                app.findTextPreferences = NothingEnum.nothing;
-                app.changeTextPreferences = NothingEnum.nothing;
-                app.findTextPreferences.fillColor = tempSwatch;
-                foundTexts = selObj.findText();
-                for (var j = 0; j < foundTexts.length; j++) {
-                        foundTexts[j].fillColor = whiteSwatch;
-                }
-        } else {
-                alert("所选对象不是文本框");
+        // 遍历所有选中对象
+        for (var i = 0; i < app.selection.length; i++) {
+            processItem(app.selection[i]);
         }
+
+        // alert("处理完成，共处理 " + app.selection.length + " 个对象");
+    } catch (e) {
+        alert("错误: " + e.message);
+    }
 }
 
-// 清除查找和替换设置
-app.findTextPreferences = NothingEnum.nothing;
-app.changeTextPreferences = NothingEnum.nothing;
+/**
+ * 递归处理对象
+ * @param {Object} item - InDesign对象
+ */
+function processItem(item) {
+    try {
+        // 处理组对象
+        if (item.constructor.name === "Group") {
+            for (var j = 0; j < item.pageItems.length; j++) {
+                processItem(item.pageItems[j]);
+            }
+            return;
+        }
 
-// alert("黑白字转换完成");
+        // 处理文本框
+        var a =item.constructor.name;
+        if (item.constructor.name === "TextFrame" || item.constructor.name === "PageItem") {
+            processTextFrame(item);
+            return;
+        }
+
+        // 处理普通对象
+        processNormalObject(item);
+    } catch (e) {
+        // 错误继续执行不中断
+        $.writeln("处理对象时出错: " + e.message);
+    }
+}
+
+/**
+ * 处理普通对象
+ * @param {Object} obj - 页面对象
+ */
+function processNormalObject(obj) {
+    // 处理外发光效果
+    processEffects(obj);
+
+    // 处理填充颜色
+    if (obj.fillColor && isValidColor(obj.fillColor)) {
+        obj.fillColor = getReversedColor(obj.fillColor);
+    }
+
+    // 处理描边颜色
+    if (obj.strokeColor && isValidColor(obj.strokeColor)) {
+        obj.strokeColor = getReversedColor(obj.strokeColor);
+    }
+}
+
+/**
+ * 处理文本框特殊逻辑
+ * @param {TextFrame} textFrame - 文本框对象
+ */
+function processTextFrame(textFrame) {
+    // 处理文本框自身属性
+    processNormalObject(textFrame);
+
+    // 处理文本内容颜色
+    var textRanges = textFrame.texts;
+    for (var i = 0; i < textRanges.length; i++) {
+        var textRange = textRanges[i];
+        processTextColor(textRange);
+    }
+}
+
+/**
+ * 处理文本颜色
+ * @param {Text} textRange - 文本范围
+ */
+function processTextColor(textRange) {
+    // 文本填充色
+    if (textRange.fillColor && isValidColor(textRange.fillColor)) {
+        textRange.fillColor = getReversedColor(textRange.fillColor);
+    }
+
+    // 文本描边色
+    if (textRange.strokeColor && isValidColor(textRange.strokeColor)) {
+        textRange.strokeColor = getReversedColor(textRange.strokeColor);
+    }
+}
+
+/**
+ * 处理对象所有外发光效果
+ * @param {Object} obj
+ */
+function processEffects(obj) {
+    try {
+
+        // 1.处理对象自身效果
+        if (obj.transparencySettings && obj.transparencySettings.isValid) {
+            
+            var objEffects = obj.transparencySettings;
+            if (objEffects['outerGlowSettings']['applied']) {
+                var outerGlow = objEffects.outerGlowSettings;
+                if (outerGlow.effectColor && isValidColor(outerGlow.effectColor)) {
+                    outerGlow.effectColor = getReversedColor(outerGlow.effectColor);
+                }
+            }
+        }
+
+        // 2.处理填充效果
+        if (obj.fillTransparencySettings && obj.fillTransparencySettings.isValid) {
+            var fillEffects = obj.fillTransparencySettings;
+            if (fillEffects['outerGlowSettings']['applied']) {
+                var outerGlow = fillEffects.outerGlowSettings;
+                if (outerGlow.effectColor && isValidColor(outerGlow.effectColor)) {
+                    outerGlow.effectColor = getReversedColor(outerGlow.effectColor);
+                }
+            }
+        }
+
+        // 3.处理描边效果
+        if (obj.strokeTransparencySettings && obj.strokeTransparencySettings.isValid) {
+            var strokeEffects = obj.strokeTransparencySettings;
+            if (strokeEffects['outerGlowSettings']['applied']) {
+                var outerGlow = strokeEffects.outerGlowSettings;
+                if (outerGlow.effectColor && isValidColor(outerGlow.effectColor)) {
+                    outerGlow.effectColor = getReversedColor(outerGlow.effectColor);
+                }
+            }
+        }
+
+        // 4.处理内容效果
+        if (obj.contentTransparencySettings && obj.contentTransparencySettings.isValid) {
+            var contentEffects = obj.contentTransparencySettings;
+            if (contentEffects['outerGlowSettings']['applied']) {
+                var outerGlow = contentEffects.outerGlowSettings;
+                if (outerGlow.effectColor && isValidColor(outerGlow.effectColor)) {
+                    outerGlow.effectColor = getReversedColor(outerGlow.effectColor);
+                }
+            }
+        }
+    } catch (e) {
+        $.writeln("处理外发光效果时出错: " + e.message);
+    }
+}
+
+
+/**
+ * 验证是否为黑白颜色
+ * @param {Color} color - 颜色对象
+ * @returns {Boolean}
+ */
+function isValidColor(color) {
+    return color.name === "Black" || color.name === "Paper";
+}
+
+/**
+ * 获取反转颜色
+ * @param {Color} color - 原始颜色
+ * @returns {Color}
+ */
+function getReversedColor(color) {
+    return color.name === "Black" 
+        ? app.activeDocument.colors.item("Paper") 
+        : app.activeDocument.colors.item("Black");
+}
+
+// 执行主程序
+main();
