@@ -29,6 +29,7 @@ function main() {
 
 // 处理单个文本框
 function processTextFrame(textFrame) {
+    textFrame.fit(FitOptions.FRAME_TO_CONTENT);
     try {
         var text = textFrame.contents;
         var matches = findBrackets(text);
@@ -118,7 +119,7 @@ function adjustLeading(textFrame, startIndex, endIndex) {
         var endLine = getLinePosition(textFrame, endIndex);
 
         if (startLine === -1 || endLine === -1) {
-            alert("无法获取括号所在的行位置！");
+            // alert("无法获取括号所在的行位置！");
             return;
         }
 

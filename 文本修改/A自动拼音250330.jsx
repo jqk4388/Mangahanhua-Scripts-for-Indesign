@@ -34,6 +34,7 @@ function main() {
 }
 
 function processTextFrame(textFrame) {
+    textFrame.fit(FitOptions.FRAME_TO_CONTENT);
     var content = textFrame.contents;
     var lines = content.split("\r");
     var globalBracketsPositions = []; // 用于记录括号在整个文本框中的全局位置
@@ -97,6 +98,7 @@ function processTextFrame(textFrame) {
 
     // 删除所有括号及其内容
     removeBracketsWithFindReplace(textFrame, globalBracketsPositions);
+    textFrame.fit(FitOptions.FRAME_TO_CONTENT);
 }
 
 function findBrackets(text) {
