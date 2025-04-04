@@ -430,7 +430,7 @@ function showSecondInterface(filePathInput) {
         dialog.selectedPages = [];
         for (var i = 0; i < fileList.items.length; i++) {
             if (fileList.items[i].selected) {
-                dialog.selectedPages.push(fileList.items[i].text);
+                dialog.selectedPages.push(pageNames[i]);
             }
         }
     };
@@ -462,10 +462,10 @@ function showSecondInterface(filePathInput) {
             startFromPage = true;
         }
 
-        // 获取用户选择的页码列表
+        // 获取用户选择的页码列表,纯数字
         for (var i = 0; i < fileList.items.length; i++) {
             if (fileList.items[i].selected) {
-                selectedPages.push(fileList.items[i].text);
+                selectedPages.push(pageNumbers[i]);
             }
         }
 
@@ -668,14 +668,14 @@ function processStart(filePathInput) {
         }else if (startPage) {
             totalPages = startPage + selectedPages.length;
             var filteredEntries = txtEntriesSelected(selectedPages, txtEntries);
-            filteredEntries = assignPageNumbers(filteredEntries, selectedPages, startPage);
+            filteredEntries = assignPageNumbers(filteredEntries, startPage);
             processTxtEntries(filteredEntries);
         }
 
     }
 
 // 页码分配函数
-function assignPageNumbers(filteredEntries, selectedPages, startPage) {
+function assignPageNumbers(filteredEntries, startPage) {
     // 创建页码分组映射表
     var pageGroups = {};
     for (var i = 0; i < filteredEntries.length; i++) {
@@ -707,23 +707,14 @@ function assignPageNumbers(filteredEntries, selectedPages, startPage) {
 
 // 从文章中筛选选中的页码
 function txtEntriesSelected(selectedPages, txtEntries) {
-    var pageNumbers = [];
-    var pageNumberPattern = /^(\d+)/;
-    for (var i = 0; i < selectedPages.length; i++) {
-        var match = selectedPages[i].match(pageNumberPattern);
-        if (match) {
-            pageNumbers.push(parseInt(match[1], 10));
-        }
-    }
-
     // 过滤匹配的条目
     var filteredEntries = [];
     for (var j = 0; j < txtEntries.length; j++) {
         var entry = txtEntries[j];
         // 检查当前条目的页码是否在选中页码中
         var isValid = false;
-        for (var k = 0; k < pageNumbers.length; k++) {
-            if (entry.pageImage === pageNumbers[k]) {
+        for (var k = 0; k < selectedPages.length; k++) {
+            if (entry.pageImage === selectedPages[k]) {
                 isValid = true;
                 break;
             }
