@@ -48,7 +48,7 @@ for (var i = 0; i < doc.pages.length; i++) {
     
     // 设置导出选项
     app.pngExportPreferences.pngQuality = PNGQualityEnum.MAXIMUM; // 设置最大质量
-    app.pngExportPreferences.exportResolution = 72; // 设置分辨率
+    app.pngExportPreferences.exportResolution = 268; // 设置分辨率
     app.pngExportPreferences.antiAlias = true; // 使用抗锯齿
     app.pngExportPreferences.pngColorSpace = PNGColorSpaceEnum.GRAY; // 使用枚举设置颜色空间
     app.pngExportPreferences.useDocumentBleeds = false; //不使用文档出血

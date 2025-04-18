@@ -9,7 +9,12 @@ app.activeDocument.viewPreferences.rulerOrigin = RulerOrigin.SPREAD_ORIGIN
 app.activeDocument.documentPreferences.pageBinding = PageBindingOptions.RIGHT_TO_LEFT
 
 // Initialize first layer as Art layer
-app.activeDocument.layers[0].name = 'Art'
+if (app.activeDocument.layers.itemByName('Art').isValid) {
+    var artLayer = app.activeDocument.layers.itemByName('Art');
+} else {
+    app.activeDocument.layers[0].name = 'Art';
+    var artLayer = app.activeDocument.layers[0];
+}
 var artLayer = app.activeDocument.layers[0]
 
 // Create other standard layers
@@ -131,8 +136,6 @@ function newtwoboxs() {
         //加载了空框架之后设置适合选项
         thisRect.frameFittingOptions.fittingAlignment = AnchorPoint.CENTER_ANCHOR;
         thisRect.frameFittingOptions.fittingOnEmptyFrame = EmptyFrameFittingOptions.FILL_PROPORTIONALLY;
-        //设置空框架的描边为无颜色
-        thisRect.strokeWeight = 0;
         matchFrameToPageSize(thisRect); // 图框加大到出血线
     }
     return i;
@@ -284,11 +287,16 @@ var theBMaster = app.activeDocument.masterSpreads.add(2, {
     appliedMaster: theMaster, // set it to inherit from A-Master  
 })
 
-// Create page number paragraph style
-pageNumberStyle = app.activeDocument.paragraphStyles.add({
-    name: "Page Numbers",
-    justification: Justification.AWAY_FROM_BINDING_SIDE,
-})
+// Create page number paragraph style if it doesn't exist
+var pageNumberStyle;
+if (app.activeDocument.paragraphStyles.itemByName("Page Numbers").isValid) {
+    pageNumberStyle = app.activeDocument.paragraphStyles.itemByName("Page Numbers");
+} else {
+    pageNumberStyle = app.activeDocument.paragraphStyles.add({
+        name: "Page Numbers",
+        justification: Justification.AWAY_FROM_BINDING_SIDE,
+    });
+}
 
 // Calculate placement of verso page number box based on placement of named guides
 var versoTopLeftX = theMaster.guides.itemByName('VersoOutside').location + 30

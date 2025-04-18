@@ -89,7 +89,7 @@ function processPage(page, file) {
 
         // 写入文本信息
         file.writeln("----------------[" + textIndex + "]----------------[" + x.toFixed(5) + "," + y.toFixed(5) + "," + groupIndex + "]");
-        file.writeln("【字体：" + fontName + "】【字号：" + fontSize + "】");
+        file.writeln("{字体：" + fontName + "}{字号：" + fontSize + "}");
         file.writeln(text);
 
         textIndex++;
