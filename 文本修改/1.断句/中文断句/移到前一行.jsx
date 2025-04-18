@@ -39,7 +39,7 @@ function moveTextToPreviousLine() {
     var previousChar = selection.parentStory.characters[startIndex - 1].contents;
     
     // 如果前面有换行符
-    if (previousChar === "\r" || previousChar === "\n") {
+    if (previousChar === SpecialCharacters.FORCED_LINE_BREAK || previousChar === "\n") {
         // 删除前面的换行符
         selection.parentStory.characters[startIndex - 1].remove();
         
