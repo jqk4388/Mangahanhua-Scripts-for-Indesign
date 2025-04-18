@@ -1,6 +1,6 @@
 # 漫画排版 InDesign 脚本集
 
-本套 InDesign 自动化脚本旨在减少日漫英译排版中的重复劳动和误差。
+本套 InDesign 自动化脚本旨在减少日漫英译/汉化排版中的重复劳动和误差。
 ***
 脚本安装路径：`C:\Users\xxx\AppData\Roaming\Adobe\InDesign\Version 20.0-J\zh_CN\Scripts\Scripts Panel`
 
