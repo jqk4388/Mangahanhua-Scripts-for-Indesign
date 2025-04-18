@@ -63,7 +63,7 @@ function processPage(page, file) {
         // 跳过隐藏的文本框
         if (!textFrame.visible) continue;
 
-        var text = textFrame.contents;
+        var text = textFrame['parentStory']['contents'];
         if (!text || String(text).replace(/^\s+|\s+$/g, '') === "") continue; // 跳过空文本框
 
         var geometricBounds = textFrame.geometricBounds; // [上, 左, 下, 右]

@@ -10,12 +10,12 @@ if (!Array.prototype.indexOf) {
 }
 // 配置常量
 var CONFIG = {
-    PUNCTUATIONS: ["……", "。", "！", "？","?", "，", "；", "—", "?!","!!","！！","!!!","!?","？！"],
+    PUNCTUATIONS: ["……", "。", "！", "？","?", "，", "；","、", "—", "?!","!!","！！","!!!","!?","？！"],
     COMMON_CHARS: ["的", "了", "吗", "吧", "呢"],
     FORBIDDEN_STARTS: ["，", "。", "！", "？", "》", "」", "）", "』", "、","：","……", "—"],
     EXCEPTIONS: {
         "的": ["的话", "的确", "的说", "的是"],
-        "了": ["了不起", "了然", "了得", "了解"],
+        "了": ["了不起", "了然", "了得", "了解", "了吧"],
         "吗": ["吗啡"],
         "吧": ["吧台", "吧主"],
         "呢": ["呢喃", "呢子"]
@@ -30,7 +30,7 @@ try {
         for (var i = 0; i < app.selection.length; i++) {
             var mySelection = app.selection[i];
             if (mySelection instanceof TextFrame) {
-                var myText = mySelection.contents;
+                var myText = mySelection['parentStory']['contents'];
                 
             // 处理流程
             myText = removeLineBreaks(myText);
@@ -175,7 +175,7 @@ function splitAtNaturalBreak(text) {
 
     // 不断句的词组
     var SEMANTIC_GROUPS = [
-        "然后", "但是", "所以", "因为", "如果", "即使", "虽然",
+        "!!!","!!","?!","然后", "但是", "所以", "因为", "如果", "即使", "虽然",
         "一个", "一只", "一些", "这种", "那种","我们", "你们",
         "他们", "她们", "它们", "这个", "那个", "这些", "那些",
         "这里", "那里", "上面", "下面", "前面", "后面",

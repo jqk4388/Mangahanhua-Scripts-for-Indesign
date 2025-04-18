@@ -8,7 +8,7 @@ try {
         for (var i = 0; i < app.selection.length; i++) {
             var mySelection = app.selection[i];
             if (mySelection instanceof TextFrame) {
-                var myText = mySelection.contents;
+                var myText = mySelection['parentStory']['contents'];
                 
                 // 调用模块化函数处理文本
                 myText = removeLineBreaks(myText);
@@ -41,7 +41,7 @@ function removeLineBreaks(text) {
  * @returns {string} - 处理后的文本
  */
 function addLineBreaksAfterPunctuation(text) {
-    var punctuationMarks = ["……", "—", "，", "。", "！", "!"];
+    var punctuationMarks = ["……", "—", "，", "。", "！", "!", "、", "；"];
     // Use for loop instead of forEach for better compatibility with ExtendScript
     for (var i = 0; i < punctuationMarks.length; i++) {
         var mark = punctuationMarks[i];
