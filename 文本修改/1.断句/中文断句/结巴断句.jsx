@@ -18,6 +18,8 @@ function main() {
             return;
         }
 
+        var waitTime = userOptions.waitTime; // 获取用户设置的等待时间
+
         // 根据用户选择的范围执行断句
         var textFrames = getTextFrames(userOptions.range);
         if (textFrames.length === 0) {
@@ -56,8 +58,12 @@ function main() {
             var jsxPath = File($.fileName).parent
             var pythonScript = new File(jsxPath.fsName + "/jieba_pytojs.pyw");
             pythonScript.execute("\"" + inputFile.fsName + "\" \"" + outputFile.fsName + "\"");
-            // 等待1秒
-            $.sleep(800);
+            
+            if (i == 0) {
+                $.sleep(waitTime * 1000 + 2000); // 第一个框建立词典缓存等待时间长
+            } else {
+                $.sleep(waitTime * 1000);
+            }
 
             // 读取处理后的文本
             outputFile.encoding = "UTF-8";
@@ -97,6 +103,16 @@ function showUI() {
     var entireDocumentRadio = rangeGroup.add("radiobutton", undefined, "文档中所有文本框");
     currentSelectionRadio.value = true; // 默认选中第一个选项
 
+    // 等待时间滑块
+    dialog.add("statictext", undefined, "等待时间：性能不好的电脑建议调整成2秒以上");
+    var waitTimeGroup = dialog.add("group");
+    var waitTimeSlider = waitTimeGroup.add("slider", undefined, 1, 1, 6); // 默认1秒，范围1-8秒
+    waitTimeSlider.preferredSize.width = 200;
+    var waitTimeText = waitTimeGroup.add("statictext", undefined, "1 秒");
+    waitTimeSlider.onChanging = function () {
+        waitTimeText.text = Math.round(waitTimeSlider.value) + " 秒";
+    };
+
     // 确定和取消按钮
     var buttonGroup = dialog.add("group");
     buttonGroup.alignment = "right";
@@ -116,6 +132,7 @@ function showUI() {
 
         return {
             range: range,
+            waitTime: Math.round(waitTimeSlider.value), // 返回用户设置的等待时间
         };
     } else {
         return null;
@@ -145,110 +162,3 @@ function getTextFrames(range) {
 
 // 执行脚本
 main();
-
-// function mergeJiebaLines(text) {
-//     // 停顿标点和句末助词
-//     var PAUSE_PUNCT = ["……", "。", "！", "？", "?", "，", "；", "、", "—", "?!", "!!", "！！", "!!!", "!?", "？！"];
-//     var END_PARTICLE = ["的", "了", "吗", "吧", "呢"];
-//     // 绝对不能分开的词（可外挂词典）
-//     var ABSOLUTE_UNBREAKABLE = ["……", "？！", "!!", "！！", "!!!", "?!", "!?", "——"];
-//     //不可分割的词
-//     var UNBREAKABLE_WORDS = ["会不会", "能不能", "要不要", "好不好", "对不对", "是不是", "有没有", "行不行", "该不该", "肯不肯", "愿不愿", "敢不敢", "愧不愧", "怪不得", "看样子", "要不然", "算起来", "说不定", "无所谓", "差不多", "没关系", "不管怎样", "不管怎么说", "不管怎么样", "不管怎么说", "不管怎样", "不管怎么说","还需要", "还应该", "还必须", "还能够", "还可以","拔刀斋","和平年代"];
-//     // 若有外挂词典文件，可在此处加载并合并到ABSOLUTE_UNBREAKABLE
-//         for (var u = 0; u < UNBREAKABLE_WORDS.length; u++) {
-//             if (ABSOLUTE_UNBREAKABLE.indexOf(UNBREAKABLE_WORDS[u]) < 0) {
-//                 ABSOLUTE_UNBREAKABLE.push(UNBREAKABLE_WORDS[u]);
-//             }
-//         }
-//     // 1. 词组数组
-//     var words = text.replace(/\r/g, '').split('\n');
-//     // 2. 合并停顿标点到前一个词
-//     var merged = [];
-//     for (var i = 0; i < words.length; i++) {
-//         var w = words[i];
-//         // 合并标点到前一个词
-//         if (PAUSE_PUNCT.indexOf(w) >= 0 && merged.length > 0) {
-//             merged[merged.length - 1] += w;
-//         } else if (w === "" && merged.length > 0) {
-//             // 跳过空词
-//             continue;
-//         } else {
-//             merged.push(w);
-//         }
-//     }
-//     // 3. 合并句末助词
-//     var merged2 = [];
-//     for (var j = 0; j < merged.length; j++) {
-//         var w2 = merged[j];
-//         if (END_PARTICLE.indexOf(w2) >= 0 && merged2.length > 0) {
-//             merged2[merged2.length - 1] += w2;
-//         } else {
-//             merged2.push(w2);
-//         }
-//     }
-//     // 4. 统计总字数
-//     var totalLen = 0;
-//     for (var k = 0; k < merged2.length; k++) {
-//         totalLen += merged2[k].length;
-//     }
-//     // 5. 计算行数和理想行长
-//     var minLines = 1;
-//     var maxLineLen = 6; // 漫画气泡常用最大行长
-//     var lines = Math.max(minLines, Math.ceil(totalLen / maxLineLen));
-//     var idealLen = Math.round(totalLen / lines);
-//     // 6. 分行
-//     var result = [];
-//     var line = "";
-//     var lineLen = 0;
-//     for (var m = 0; m < merged2.length; m++) {
-//         var word = merged2[m];
-//         // 绝对不能分开的词，单独成段或与前后词合并时整体移动
-//         if (ABSOLUTE_UNBREAKABLE.indexOf(word) >= 0) {
-//             if (lineLen > 0) {
-//                 result.push(line);
-//                 line = "";
-//                 lineLen = 0;
-//             }
-//             result.push(word);
-//             continue;
-//         }
-//         // 如果加上当前词超出理想长度1字，且当前行不空，则换行
-//         if (lineLen > 0 && (lineLen + word.length > idealLen + 1)) {
-//             result.push(line);
-//             line = "";
-//             lineLen = 0;
-//         }
-//         // 长词组不能拆分
-//         if (lineLen > 0 && word.length >= idealLen + 2) {
-//             result.push(line);
-//             result.push(word);
-//             line = "";
-//             lineLen = 0;
-//             continue;
-//         }
-//         // 合并到当前行
-//         line += word;
-//         lineLen += word.length;
-//         // 如果刚好到理想长度附近，且不是最后一个词，则换行
-//         if (lineLen >= idealLen && m < merged2.length - 1) {
-//             result.push(line);
-//             line = "";
-//             lineLen = 0;
-//         }
-//     }
-//     if (lineLen > 0) {
-//         result.push(line);
-//     }
-//     // 7. 处理标点后多余换行
-//     for (var n = 0; n < result.length - 1; n++) {
-//         var lastChar = result[n].charAt(result[n].length - 1);
-//         // 如果以标点结尾，下一行不是标点，则用\r，否则用\n
-//         if (PAUSE_PUNCT.join('').indexOf(lastChar) >= 0) {
-//             result[n] += "\r";
-//         } else {
-//             result[n] += "\n";
-//         }
-//     }
-//     // 8. 合并结果
-//     return result.join('').replace(/[\r\n]+$/,"");
-// }

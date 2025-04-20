@@ -8,7 +8,7 @@ function mergeJiebaLines(text) {
     var PAUSE_PUNCT = ["……", "。", "！", "？", "?", "，", "；", "、", "—", "?!", "!!", "！！", "!!!", "!?", "？！"];
     var END_PARTICLE = ["的", "了", "吗", "吧", "呢"];
     // 绝对不能分开的词（可外挂词典）
-    var ABSOLUTE_UNBREAKABLE = ["……", "？！", "!!", "！！", "!!!", "?!", "!?", "——"];
+    var ABSOLUTE_UNBREAKABLE = ["……","—!!","…!!", "？！", "!!", "！！", "!!!", "?!", "!?", "——","…!","—!","…！","—！","…?","—?","…？","—？","~~","～～"];
     //不可分割的词
     var UNBREAKABLE_WORDS = ["这双","这个","这把","这件","这条","这块","这张","这部","这台","这辆","这本","这支","这颗","这套","这幅","这首","这篇",
     "会不会", "能不能", "要不要", "好不好", "对不对", "是不是", "有没有", "行不行", "该不该", "肯不肯", "愿不愿", "敢不敢", "愧不愧", "怪不得", "看样子", "要不然", "算起来", "说不定", "无所谓", "差不多", "没关系", "不管怎样", "不管怎么说", "不管怎么样", "不管怎么说", "不管怎样", "不管怎么说","还需要", "还应该", "还必须", "还能够", "还可以","拔刀斋",
@@ -34,7 +34,36 @@ function mergeJiebaLines(text) {
         ) {
             mergedBracketWords.push(words[i] + words[i + 1] + words[i + 2]);
             i += 3;
-        } else {
+        }
+        // 检查左括号+词的模式（确保后续存在对应的右括号）
+        else if (
+            i + 1 < words.length &&
+            LEFT_BRACKETS.indexOf(words[i]) >= 0
+        ) {
+            var hasMatchingRightBracket = false;
+            for (var k = i + 1; k < words.length; k++) {
+                if (RIGHT_BRACKETS.indexOf(words[k]) >= 0) {
+                    hasMatchingRightBracket = true;
+                    break;
+                }
+            }
+            if (hasMatchingRightBracket) {
+                mergedBracketWords.push(words[i] + words[i + 1]);
+                i += 2;
+            } else {
+                mergedBracketWords.push(words[i]);
+                i++;
+            }
+        }
+        // 检查词+右括号的模式
+        else if (
+            i + 1 < words.length &&
+            RIGHT_BRACKETS.indexOf(words[i + 1]) >= 0
+        ) {
+            mergedBracketWords.push(words[i] + words[i + 1]);
+            i += 2;
+        }
+        else {
             mergedBracketWords.push(words[i]);
             i++;
         }
@@ -147,13 +176,22 @@ function mergeJiebaLines(text) {
     if (lineLen > 0) {
         result.push(line);
     }
-    // 7. 处理标点后多余换行
+    // 7. 处理标点和不可分割词的换行
     for (var n = 0; n < result.length - 1; n++) {
         var lastChar = result[n].charAt(result[n].length - 1);
-        // 如果以标点结尾，下一行不是标点，则用\r，否则用\n
-        if (PAUSE_PUNCT.join('').indexOf(lastChar) >= 0) {
+        var nextWord = result[n + 1];
+        
+        // 如果当前行以标点结尾，且下一行不是标点，则用\r
+        if (PAUSE_PUNCT.join('').indexOf(lastChar) >= 0 && 
+            PAUSE_PUNCT.indexOf(nextWord) < 0) {
             result[n] += "\r";
-        } else {
+        }
+        // 如果下一行是绝对不可分割的词，则用\r保持在同一段落
+        else if (ABSOLUTE_UNBREAKABLE.indexOf(nextWord) >= 0) {
+            result[n] += "\r";
+        }
+        // 其他情况用\n
+        else {
             result[n] += "\n";
         }
     }
