@@ -12,6 +12,12 @@ if (folder == null) {
     exit();
 }
 
+// 新增：询问导出范围
+var exportCurrentPageOnly = false;
+if (confirm("是否只导出当前页面？\n\n选择“是”导出当前页面，选择“否”导出全部页面。")) {
+    exportCurrentPageOnly = true;
+}
+
 // 创建进度条窗口
 var progressWin = new Window("palette", "导出进度", [150, 150, 600, 270]);
 progressWin.progressBar = progressWin.add("progressbar", [20, 20, 430, 40], 0, doc.pages.length);
@@ -42,26 +48,37 @@ var startTime = new Date().getTime();
 var maxDuration = 5 * 60 * 1000; // 5分钟
 
 // 导出每一页为单独的JPEG文件
-for (var i = 0; i < doc.pages.length; i++) {
-    if (userCancelled) {
-        alert("操作已取消。");
-        exit();
-    }
-
-    var currentTime = new Date().getTime();
-    if (currentTime - startTime > maxDuration) {
-        alert("导出时间超过2分钟，操作已停止。");
-        break;
-    }
-
-    var page = doc.pages[i];
-    var filePath = new File(folder.fsName + "/" + docName + "_" + ("00" + (i + 1)).slice(-3) + ".jpg");
-    app.jpegExportPreferences.pageString = page.name;
+if (exportCurrentPageOnly) {
+    // 只导出当前页面
+    var currentPage = app.activeWindow.activePage;
+    var filePath = new File(folder.fsName + "/" + docName + "_" + ("00" + (currentPage.documentOffset + 1)).slice(-3) + ".jpg");
+    app.jpegExportPreferences.pageString = currentPage.name;
     doc.exportFile(ExportFormat.JPG, filePath, false);
-    
-    // 更新进度条
-    progressWin.progressBar.value = i + 1;
-    progressWin.progressText.text = "正在导出页面 " + (i + 1) + " / " + doc.pages.length;
+    progressWin.progressBar.value = 1;
+    progressWin.progressText.text = "已导出当前页面";
+} else {
+    // 导出全部页面
+    for (var i = 0; i < doc.pages.length; i++) {
+        if (userCancelled) {
+            alert("操作已取消。");
+            exit();
+        }
+
+        var currentTime = new Date().getTime();
+        if (currentTime - startTime > maxDuration) {
+            alert("导出时间超过2分钟，操作已停止。");
+            break;
+        }
+
+        var page = doc.pages[i];
+        var filePath = new File(folder.fsName + "/" + docName + "_" + ("00" + (i + 1)).slice(-3) + ".jpg");
+        app.jpegExportPreferences.pageString = page.name;
+        doc.exportFile(ExportFormat.JPG, filePath, false);
+        
+        // 更新进度条
+        progressWin.progressBar.value = i + 1;
+        progressWin.progressText.text = "正在导出页面 " + (i + 1) + " / " + doc.pages.length;
+    }
 }
 
 // 关闭进度条窗口
