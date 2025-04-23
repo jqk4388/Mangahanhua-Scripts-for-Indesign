@@ -1,14 +1,15 @@
 #author: 几千块
-#version: 1.0.0
+#version: 1.1.0
 #description: 基于jieba的文本分词工具，词性标注、合并词语、自动分句等功能。
 import os
-import jieba
 import jieba.posseg as pseg
 import argparse
 from tkinter import messagebox
+import tkinter as tk
 
 # 句末标点列表
-sentence_endings = {"…", "。", "！", "!", "？", "?", "，", "；", "：", "、", "—", "”", "）", "】", "｝", "」", "』", "》", ")"}
+sentence_endings_lianyong = {"…", "。", "！", "!", "？", "?", "，", "；", "：", "、", "—", "”", "）", "】", "｝", "」", "』", "》", ")"}
+sentence_endings = {"…", "。", "！", "!", "？", "?", "，", "；", "：", "、", "—", "”"} #分句用标点
 # 定义默认文件路径
 default_input_file = os.path.join(os.getenv('LOCALAPPDATA'), 'Temp', 'jieba_temp_input.txt')
 default_output_file = os.path.join(os.getenv('LOCALAPPDATA'), 'Temp', 'jieba_temp_output.txt')
@@ -21,7 +22,16 @@ def process_sentence(word_list):
     n = len(word_list)
     while i < n:
         word, pos = word_list[i]
-        
+
+        # 处理动词+数词+动词结构
+        if pos.startswith('v') and i + 2 < n:
+            m_word, m_pos = word_list[i+1]
+            v2_word, v2_pos = word_list[i+2]
+            if m_pos == 'm' and v2_pos.startswith('v'):
+                units.append(word + m_word + v2_word)
+                i += 3
+                continue
+
         # 处理专有名词
         if pos.startswith(('nr', 'ns', 'nt', 'nz')):
             units.append(word)
@@ -43,6 +53,15 @@ def process_sentence(word_list):
                 i += 3
                 continue
         
+        # 处理代词+量词+名词结构：这扇窗户
+        if pos == 'r' and i + 2 < n:
+            v_word, v_pos = word_list[i+1]
+            n_word, n_pos = word_list[i+2]
+            if v_pos.startswith('q') and n_pos.startswith('n'):
+                units.append(word + v_word + n_word)
+                i += 3
+                continue
+        
         # 处理名词+动词短语+的结构
         if pos.startswith('n'):
             j = i + 1
@@ -58,6 +77,15 @@ def process_sentence(word_list):
             units.append(word + word_list[i+1][0])
             i += 2
             continue
+                
+        # 处理副词+动词+了结构：突然响了
+        if pos == 'ad' and i + 2 < n:
+            v_word, v_pos = word_list[i+1]
+            n_word, n_pos = word_list[i+2]
+            if v_pos.startswith('v') and n_pos.startswith('ul'):
+                units.append(word + v_word + n_word)
+                i += 3
+                continue
         
         # 处理副词修饰结构
         if pos in ('d', 'ad') and i + 1 < n:
@@ -70,7 +98,7 @@ def process_sentence(word_list):
         # 处理动词+助词结构
         if pos.startswith('v') and i + 1 < n:
             next_word, next_pos = word_list[i+1]
-            if next_pos in ('uz', 'ug', 'ud', 'ul','uj'): #着得过了的
+            if next_pos in ('uz', 'ug', 'ud', 'ul','uj','uv'): #着得过了的
                 units.append(word + next_word)
                 i += 2
                 continue
@@ -112,10 +140,20 @@ def process_sentence(word_list):
             units[-1] += word
             i += 1
             continue
+
+        # 处理好+形容词+啊结构
+        if pos.startswith('a') and i + 2 < n:
+            m_word, m_pos = word_list[i+1]
+            v2_word, v2_pos = word_list[i+2]
+            if m_pos == 'a' and v2_pos.startswith('y'):
+                units.append(word + m_word + v2_word)
+                i += 3
+                continue
+
         
         # 处理标点符号
         if pos == 'x':
-            if word in sentence_endings:
+            if word in sentence_endings_lianyong:
                 if units:
                     units[-1] += word
                 else:
@@ -195,7 +233,7 @@ def split_into_lines(units, limit):
     for sentence in sentences:
         # 短句处理
         total_length = sum(len(unit) for unit in sentence)
-        if len(sentences) == 1 and total_length <= 8:  # 只有一句且字数不超过阈值
+        if len(sentences) == 1 and total_length <= 6:  # 只有一句且字数不超过阈值
             sentence_result = [sentence[0], '\\r'.join(sentence[1:])]
             result.append(''.join(sentence_result))
             break
@@ -314,7 +352,13 @@ def main():
     # 写入输出文件
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(processed_content))
-        messagebox.showinfo("结巴断句", "断句已完成！")
+    
+    # 创建并显示5秒后自动关闭的消息框
+    root = tk.Tk()
+    root.withdraw()  # 隐藏主窗口
+    root.after(5000, root.destroy)  # 5秒后销毁窗口
+    messagebox.showinfo("结巴断句", "断句已完成！")
+    root.mainloop()
 
 if __name__ == '__main__':
     main()
