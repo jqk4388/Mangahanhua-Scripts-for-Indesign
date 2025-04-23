@@ -1,7 +1,7 @@
 // LP翻译稿处理工具
 // 该脚本用于处理LP翻译稿，将文本插入到InDesign文档中，并根据分组应用样式
 // 作者：几千块
-// 日期：20250404
+// 日期：20250420
 var version = "2.0";
 // 声明全局变量
 var totalPages = 0;
@@ -93,17 +93,7 @@ function parseLines(lines, isSingleLineMode) {
 
             // 根据模式处理文本内容
             if (isSingleLineMode || textContent.length === 1) {
-                // 单行模式或单行文本
-                var entry = {
-                    pageImage: totalPages,
-                    pageNumber: pageNumber,
-                    position: [baseX, baseY],
-                    group: group,
-                    text: textContent.join("\n")
-                };
-                entries.push(entry);
-            } else {
-                // 多行模式
+                // 单行模式拆分成多个文本框
                 for (var k = 0; k < textContent.length; k++) {
                     var entry = {
                         pageImage: totalPages,
@@ -114,6 +104,16 @@ function parseLines(lines, isSingleLineMode) {
                     };
                     entries.push(entry);
                 }
+            } else {
+                // 多行模式合并成一个文本框
+                var entry = {
+                    pageImage: totalPages,
+                    pageNumber: pageNumber,
+                    position: [baseX, baseY],
+                    group: group,
+                    text: textContent.join("\n")
+                };
+                entries.push(entry);
             }
 
             i += textContent.length; // 更新索引以跳过已处理的文本行
@@ -597,10 +597,10 @@ function showThirdInterface(filePathInput) {
     }
 
     // 底部按钮组
-    var buttonGroup = dialog.add("group");
-    buttonGroup.orientation = "row";
-    var cancelButton = buttonGroup.add("button", undefined, "取消");
+    var buttonGroup = mainGroup.add("group");
+    buttonGroup.orientation = "column";
     var confirmButton = buttonGroup.add("button", undefined, "确定");
+    var cancelButton = buttonGroup.add("button", undefined, "取消");
 
     // 取消按钮点击事件
     cancelButton.onClick = function () {
