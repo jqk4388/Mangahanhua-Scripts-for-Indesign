@@ -1,7 +1,28 @@
 // 获取当前活动文档
 var doc = app.activeDocument;
-//要导出的彩页页数，前3页
+
+// 新增：让用户输入要导出的彩页数量
 var pageCount = 3;
+while (true) {
+    var input = prompt("请输入要导出的彩页数量（默认前3页）：", "3");
+    if (input === null) {
+        // 用户取消，默认3
+        pageCount = 3;
+        break;
+    }
+    input = input.replace(/^\s+|\s+$/g, "");
+    if (input === "") {
+        pageCount = 3;
+        break;
+    }
+    var num = parseInt(input, 10);
+    if (!isNaN(num) && num > 0 && num <= doc.pages.length) {
+        pageCount = num;
+        break;
+    } else {
+        alert("请输入1到" + doc.pages.length + "之间的正整数！");
+    }
+}
 
 // 获取文档名称并去掉扩展名
 var docName = doc.name.replace(/\.[^\.]+$/, '');
@@ -44,9 +65,8 @@ app.jpegExportPreferences.embedColorProfile = true; // 嵌入颜色配置文件
 var startTime = new Date().getTime();
 var maxDuration = 5 * 60 * 1000; // 5分钟
 
-
-// 导出前三页彩页
-for (var i = 0; i <pageCount; i++) {
+// 导出彩页
+for (var i = 0; i < pageCount; i++) {
     if (userCancelled) {
         alert("操作已取消。");
         exit();
