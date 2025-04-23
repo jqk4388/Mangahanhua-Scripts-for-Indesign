@@ -1,4 +1,3 @@
-#include "mergeJiebaLines.js"
 // 兼容性垫片（ES3环境）
 if (!Array.prototype.indexOf) {
     Array.prototype.indexOf = function(item) {
@@ -18,79 +17,81 @@ function main() {
             return;
         }
 
-        var waitTime = userOptions.waitTime; // 获取用户设置的等待时间
-
         // 根据用户选择的范围执行断句
         var textFrames = getTextFrames(userOptions.range);
+
         if (textFrames.length === 0) {
             alert("未找到任何文本框。");
             return;
         }
 
-        // 创建进度条对话框
-        var progressWin = new Window("palette", "处理进度");
-        progressWin.progressBar = progressWin.add("progressbar", undefined, 0, textFrames.length);
-        progressWin.progressBar.preferredSize.width = 300;
-        progressWin.status = progressWin.add("statictext", undefined, "正在处理...");
-        progressWin.center();
-        progressWin.show();
+        DoalltextFrames(textFrames);//执行所有文本框
 
-        for (var i = 0; i < textFrames.length; i++) {
-            // 更新进度条
-            progressWin.progressBar.value = i + 1;
-            progressWin.status.text = "正在处理第 " + (i + 1) + " 个文本框，共 " + textFrames.length + " 个";
-
-            var textFrame = textFrames[i];
-            var content = textFrame['parentStory']['contents'];
-            content = content.replace(/[\r\n]/g, "");
-            // 创建临时文件路径
-            var tempFolder = Folder.temp;
-            var inputFile = new File(tempFolder + "/jieba_temp_input.txt");
-            var outputFile = new File(tempFolder + "/jieba_temp_output.txt");
-
-            // 写入内容到临时文件
-            inputFile.encoding = "UTF-8";
-            inputFile.open("w");
-            inputFile.write(content);
-            inputFile.close();
-
-            // 调用 jieba-pytojs 处理文本
-            var jsxPath = File($.fileName).parent
-            var pythonScript = new File(jsxPath.fsName + "/jieba_pytojs.pyw");
-            pythonScript.execute("\"" + inputFile.fsName + "\" \"" + outputFile.fsName + "\"");
-            
-            if (i == 0) {
-                $.sleep(waitTime * 1000 + 2000); // 第一个框建立词典缓存等待时间长
-            } else {
-                $.sleep(waitTime * 1000);
-            }
-
-            // 读取处理后的文本
-            outputFile.encoding = "UTF-8";
-            outputFile.open("r");
-            var segmentedContent = outputFile.read();
-            outputFile.close();
-
-            //处理后的文本重新合并短句
-            segmentedContent = mergeJiebaLines(segmentedContent);
-
-            // 更新文本框内容
-            textFrame['parentStory']['contents'] = segmentedContent;
-
-            // 删除临时文件
-            inputFile.remove();
-            outputFile.remove();
-        }
-
-        // 关闭进度条
-        progressWin.close();
-
+    
         // alert("断句完成！");
     } catch (e) {
         alert("发生错误: " + e.message);
     }
 }
+function DoalltextFrames(textFrames) {
+    // 创建临时文件路径
+    var tempFolder = Folder.temp;
+    var inputFile = new File(tempFolder + "/jieba_temp_input.txt");
+    var outputFile = new File(tempFolder + "/jieba_temp_output.txt");
 
+    // 打开文件准备写入
+    inputFile.encoding = "UTF-8";
+    inputFile.open("w");
+    
+    // 遍历所有文本框，写入内容
+    for (var i = 0; i < textFrames.length; i++) {
+        var textFrame = textFrames[i];
+        var content = textFrame['parentStory']['contents'];
+        content = content.replace(/[\r\n]/g, ""); // 移除换行符
+        
+        // 写入当前文本框内容并添加换行
+        inputFile.write(content + "\n");
+    }
+    
+    // 关闭文件
+    inputFile.close();
+    // 调用 jieba-pytojs 处理文本
+    var jsxPath = File($.fileName).parent
+    var pythonScript = new File(jsxPath.fsName + "/jieba_pytojs.pyw");
+    pythonScript.execute("\"" + inputFile.fsName + "\" \"" + outputFile.fsName + "\"");
+
+    // 等待用户确认脚本是否完成
+    var isDone = confirm("请确认Python断句脚本是否已经处理完成，未弹窗请选择No。\n\n点击“Yes”替换断句结果，点击“No”退出。");
+    if (!isDone) {
+        // 删除临时文件
+        inputFile.remove();
+        outputFile.remove();
+        throw new Error("用户取消，脚本终止。");
+    }
+    
+    // 读取处理后的文本
+    outputFile.encoding = "UTF-8";
+    outputFile.open("r");
+    var segmentedContents = outputFile.read();
+    outputFile.close();
+    // 将文本按行分割
+    var contentLines = segmentedContents.split("\n");
+    
+    // 遍历每个文本框，更新内容
+    for (var i = 0; i < textFrames.length && i < contentLines.length; i++) {
+
+        // 将\r转换为真正的换行符
+        var processedContent = contentLines[i].replace(/\\r/g, "\n");
+        
+        // 更新文本框内容
+        textFrames[i]['parentStory']['contents'] = processedContent || '';
+    }
+
+    // // 删除临时文件
+    // inputFile.remove();
+    // outputFile.remove();
+}
+  
 // 显示UI界面
 function showUI() {
     var dialog = new Window("dialog", "自动断句");
@@ -102,16 +103,6 @@ function showUI() {
     var currentPageRadio = rangeGroup.add("radiobutton", undefined, "当页所有文本框");
     var entireDocumentRadio = rangeGroup.add("radiobutton", undefined, "文档中所有文本框");
     currentSelectionRadio.value = true; // 默认选中第一个选项
-
-    // 等待时间滑块
-    dialog.add("statictext", undefined, "等待时间：性能不好的电脑建议调整成2秒以上");
-    var waitTimeGroup = dialog.add("group");
-    var waitTimeSlider = waitTimeGroup.add("slider", undefined, 1, 1, 6); // 默认1秒，范围1-8秒
-    waitTimeSlider.preferredSize.width = 200;
-    var waitTimeText = waitTimeGroup.add("statictext", undefined, "1 秒");
-    waitTimeSlider.onChanging = function () {
-        waitTimeText.text = Math.round(waitTimeSlider.value) + " 秒";
-    };
 
     // 确定和取消按钮
     var buttonGroup = dialog.add("group");
@@ -132,7 +123,7 @@ function showUI() {
 
         return {
             range: range,
-            waitTime: Math.round(waitTimeSlider.value), // 返回用户设置的等待时间
+
         };
     } else {
         return null;

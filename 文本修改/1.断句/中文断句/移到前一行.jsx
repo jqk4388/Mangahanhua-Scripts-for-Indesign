@@ -24,13 +24,14 @@ function moveTextToPreviousLine() {
     var selection = app.selection[0];
     
     // 检查是否有有效选择
-    if (!selection || !(selection instanceof Text || selection instanceof InsertionPoint || selection instanceof TextStyleRange)) {
+    if (!selection || !(selection instanceof Text || selection instanceof InsertionPoint || selection instanceof TextStyleRange|| selection instanceof Character)) {
         // alert("无效的选择！");
         return;
     }
 
     // 获取选区起始位置
     var startIndex = selection.insertionPoints[0].index;
+    var charlength = selection.contents.length;
     
     // 检查前一个字符是否为换行符
     var previousChar = selection.parentStory.characters[startIndex - 1].contents;
@@ -41,7 +42,7 @@ function moveTextToPreviousLine() {
 
     // 处理选中的文本或单个字符
     var textToMove;
-    if (selection.contents.length > 0) {
+    if (charlength > 0) {
         // 有选中文本的情况
         textToMove = selection.contents;
         selection.contents = ""; // 清除原位置的文本
@@ -49,9 +50,10 @@ function moveTextToPreviousLine() {
         // 光标位置的情况，获取后面的一个字符
         try {
             textToMove = selection.parentStory.characters[startIndex].contents;
+            selection.parentStory.characters[startIndex].contents = ""; // 清除原位置的文本
             // 检查是否为特殊字符
             if (textToMove === SpecialCharacters.ELLIPSIS_CHARACTER){
-                textToMove = "……" ;
+                textToMove = "…" ;
                 selection.parentStory.characters[startIndex].remove();
                 selection.parentStory.characters[startIndex].remove();
             }else if (textToMove === SpecialCharacters.EM_DASH){
@@ -70,8 +72,9 @@ function moveTextToPreviousLine() {
     
     // 在原位置插入文本和换行符
     var insertionPoint = selection.parentStory.insertionPoints[startIndex - 1];
-    insertionPoint.contents = textToMove + "\r";
+    insertionPoint.contents = textToMove + "\n";
     
     // 将光标移动到处理后的位置
     insertionPoint.select();
+    
 }
