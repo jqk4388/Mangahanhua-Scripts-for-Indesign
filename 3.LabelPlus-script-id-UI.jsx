@@ -1,7 +1,7 @@
 // LP翻译稿处理工具
 // 该脚本用于处理LP翻译稿，将文本插入到InDesign文档中，并根据分组应用样式
 // 作者：几千块
-// 日期：20250420
+// 日期：20250424
 var version = "2.0";
 // 声明全局变量
 var totalPages = 0;
@@ -67,6 +67,8 @@ function parseLines(lines, isSingleLineMode) {
         // 匹配页面名
         var pageMatch = lines[i].match(/>>>>>>>>\[(.*)\]<<<<<<<<$/);
         if (pageMatch) {
+            var pageName = pageMatch[1];
+            var pageNameArr = [pageName];
             totalPages++; // 每遇到一个新页面时，页面总数增加
             continue;
         }
@@ -96,7 +98,7 @@ function parseLines(lines, isSingleLineMode) {
                 // 单行模式拆分成多个文本框
                 for (var k = 0; k < textContent.length; k++) {
                     var entry = {
-                        pageImage: totalPages,
+                        pageImage: extractPageNumbers(pageNameArr)[0],
                         pageNumber: pageNumber,
                         position: [baseX - k * 0.03, baseY + k * 0.03],
                         group: group,
@@ -107,7 +109,7 @@ function parseLines(lines, isSingleLineMode) {
             } else {
                 // 多行模式合并成一个文本框
                 var entry = {
-                    pageImage: totalPages,
+                    pageImage: extractPageNumbers(pageNameArr)[0],
                     pageNumber: pageNumber,
                     position: [baseX, baseY],
                     group: group,
@@ -370,11 +372,11 @@ function showSecondInterface(filePathInput) {
     var matchOptionGroup = leftGroup.add("panel", undefined, "匹配方式");
     matchOptionGroup.orientation = "column";
     matchOptionGroup.alignChildren = "left";
-    var fromStartoEndCheckbox = matchOptionGroup.add("radiobutton", undefined, "从头导入所有文本");
+    var fromStartoEndCheckbox = matchOptionGroup.add("radiobutton", undefined, "匹配页码导入所有页面的文本");
     fromStartoEndCheckbox.value = true; // 默认选中
-    var matchByNumberCheckbox = matchOptionGroup.add("radiobutton", undefined, "匹配页码导入选定文本");
+    var matchByNumberCheckbox = matchOptionGroup.add("radiobutton", undefined, "匹配页码导入选定页面的文本");
     
-    var startFromPageCheckbox = matchOptionGroup.add("radiobutton", undefined, "从文档的第X页导入选定文本");;
+    var startFromPageCheckbox = matchOptionGroup.add("radiobutton", undefined, "从文档的第X页导入选定页面的文本");;
     var startPageInput = matchOptionGroup.add("edittext", undefined, "1");
     startPageInput.characters = 3;
     startPageInput.enabled = false;
