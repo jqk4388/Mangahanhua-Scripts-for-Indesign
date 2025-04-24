@@ -42,7 +42,7 @@ try {
             myText = balanceLineLength(myText);
 
                 // 更新文本框内容
-                mySelection.contents = myText;
+                mySelection['parentStory']['contents'] = myText;
             }
         }
     }
