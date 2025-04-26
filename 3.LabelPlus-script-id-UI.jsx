@@ -400,14 +400,16 @@ function showSecondInterface(filePathInput) {
         }
     }
     // 创建listbox
-    var fileList = rightGroup.add("listbox", undefined,undefined, {
+    var fileList = rightGroup.add("listbox", undefined, undefined, {
         numberOfColumns: 2,
         showHeaders: true,
         columnTitles: ["文件名", "页码"],
         multiselect: true
     });
-    fileList.maximumSize = [500, 500];
+    fileList.maximumSize.height = 300;
+    fileList.preferredSize = [200, 300];
     fileList.alignment = "fill";
+    // 滚动条在listbox内容超出高度时自动出现（ScriptUI自动处理）
 
     var pageNumbers = extractPageNumbers(pageNames);
 
@@ -490,119 +492,128 @@ function showSecondInterface(filePathInput) {
 function showThirdInterface(filePathInput) {
     var dialog = new Window("dialog", "文本替换与样式匹配");
 
-    // 创建一个水平排列的主组
+    // 主分组
     var mainGroup = dialog.add("group");
     mainGroup.orientation = "row";
     mainGroup.alignChildren = "fill";
-    mainGroup.scrolling = true;
 
-    // 左侧选项部分：文字替换
-    var leftGroup = mainGroup.add("group");
-    leftGroup.orientation = "column";
-    leftGroup.alignChildren = "fill";
-    leftGroup.scrolling = true;
-    var leftPanel = leftGroup.add("group"); 
-    leftPanel.orientation = "column";
-    var scrollContainer = leftPanel.add("group"); // 添加滚动容器
-    scrollContainer.preferredSize = [300, 300];
-    scrollContainer.scrolling = true; 
-    var contentGroup = scrollContainer.add("group"); 
-    contentGroup.orientation = "column";
+    // 左侧：文字替换
+    var leftPanel = mainGroup.add("panel", undefined, "文字替换");
+    leftPanel.alignChildren = "fill";
+    leftPanel.preferredSize = [340, 350];
+    var leftAddBtn = leftPanel.add("button", undefined, "+");
+    var leftListPanel = leftPanel.add("panel");
+    leftListPanel.preferredSize = [320, 300];
+    leftListPanel.alignChildren = "top";
+    leftListPanel.orientation = "column";
+    leftListPanel.margins = [0,0,0,0];
+    leftListPanel.spacing = 2;
+    leftListPanel.maximumSize.height = 800;
 
-    for (var key in replacements) {
-        if (replacements.hasOwnProperty(key)) {
-            var panel = contentGroup.add("panel", undefined, ""); // 将面板添加到滚动组中
-            panel.orientation = "row";
+    // 右侧：对象样式匹配
+    var rightPanel = mainGroup.add("panel", undefined, "对象样式匹配");
+    rightPanel.alignChildren = "fill";
+    rightPanel.preferredSize = [340, 350];
+    var rightAddBtn = rightPanel.add("button", undefined, "+");
+    var rightListPanel = rightPanel.add("panel");
+    rightListPanel.preferredSize = [320, 300];
+    rightListPanel.alignChildren = "top";
+    rightListPanel.orientation = "column";
+    rightListPanel.margins = [0,0,0,0];
+    rightListPanel.spacing = 2;
+    rightListPanel.maximumSize.height = 800;
 
-            var checkbox = panel.add("checkbox", undefined, "");
-                if (key === ""|| key === "？") {
-                    checkbox.value = false;
-                } else {
-                    checkbox.value = true;
-                }
+    // 行数据存储
+    var leftRows = [];
+    var rightRows = [];
 
-            var fromInput = panel.add("edittext", undefined, key);
-            fromInput.characters = 10;
-
-            var replaceLabel = panel.add("statictext", undefined, " 替换成 ");
-            replaceLabel.preferredSize = [50, 20];
-
-            var toInput = panel.add("edittext", undefined, replacements[key]);
-            toInput.characters = 10;
-        }
+    // 左侧添加一行
+    function addLeftRow(fromText, toText, checked) {
+        var g = leftListPanel.add("group");
+        g.orientation = "row";
+        g.alignChildren = "center";
+        g.preferredSize = [310, 24];
+        var cb = g.add("checkbox", undefined, "");
+        cb.value = (typeof checked === "boolean") ? checked : true;
+        var fromEdit = g.add("edittext", undefined, fromText || "");
+        fromEdit.preferredSize = [90, 22];
+        var label = g.add("statictext", undefined, "→");
+        var toEdit = g.add("edittext", undefined, toText || "");
+        toEdit.preferredSize = [90, 22];
+        leftRows.push({cb: cb, fromEdit: fromEdit, toEdit: toEdit, group: g});
+        leftListPanel.layout.layout(true);
     }
 
-    // 右侧选项部分：文本匹配对象样式
-    var rightGroup = mainGroup.add("group");
-    rightGroup.orientation = "column";
-    rightGroup.alignChildren = "fill";
-    rightGroup.scrolling = true;
-
-    var rightScroll = rightGroup.add("group"); 
-    rightScroll.preferredSize = [300, 300];
-    rightScroll.scrolling = true;
-    var styleContent = rightScroll.add("group"); 
-    styleContent.orientation = "column";
-
-    for (var i = 0; i < objectStyleMatchText.length; i++) {
-        var option = objectStyleMatchText[i];
-        var panel = styleContent.add("panel", undefined, "");
-        panel.orientation = "row";
-
-        var checkbox = panel.add("checkbox", undefined, "");
-        checkbox.value = option.checked;
-
-        if (i === 0){
-                var includeLabel = panel.add("statictext", undefined, " 所有文本 ");
-                includeLabel.preferredSize = [80, 20]; 
-        }else{
-                var includeLabel = panel.add("statictext", undefined, " 包含 ");
-                includeLabel.preferredSize = [40, 20]; 
+    // 右侧添加一行
+    function addRightRow(matchText, styleName, checked) {
+        var g = rightListPanel.add("group");
+        g.orientation = "row";
+        g.alignChildren = "center";
+        g.preferredSize = [310, 24];
+        var cb = g.add("checkbox", undefined, "");
+        cb.value = (typeof checked === "boolean") ? checked : true;
+        if (matchText!=='默认匹配') {
+            var matchEdit = g.add("edittext", undefined, matchText || "");
+            matchEdit.preferredSize = [90, 22];
+        }else {
+            var matchEdit = g.add("statictext", undefined, "默认匹配");
         }
         
-        if (i === 0) {
-            var includeInput = panel.add("statictext", undefined, option.label);
-            includeInput.preferredSize = [60, 20]; 
-        } else {
-            var includeInput = panel.add("edittext", undefined, option.label);
-            includeInput.characters = 6;
-            includeInput.active = true; 
-        }
-        if (i === 0){
-            var replaceLabel = panel.add("statictext", undefined, " 对象样式 ");
-            replaceLabel.preferredSize = [60, 20];
-        }else{
-            var replaceLabel = panel.add("statictext", undefined, " 应用样式 ");
-            replaceLabel.preferredSize = [60, 20];
-        }
-
-
-
+        var label = g.add("statictext", undefined, "应用样式");
         var docObjectstyles = getDocumentObjectStyles();
         var styleNames = [];
         for (var j = 0; j < docObjectstyles.length; j++) {
             styleNames.push(docObjectstyles[j].name);
         }
-        var styleDropdown = panel.add("dropdownlist", undefined, styleNames);
-        if (includeInput.text=="*"||includeInput.text=="※"||includeInput.text=="＊") {
-            if(styleDropdown.children.length > 5){
-                styleDropdown.selection = 4;
+        var dropdown = g.add("dropdownlist", undefined, styleNames);
+        if (matchText=="*"||matchText=="※"||matchText=="＊") {
+            if(dropdown.children.length > 5){
+                dropdown.selection = 4;
             }else {
-                styleDropdown.selection = 3;
+                dropdown.selection = 3;
             }
-        }else if(styleDropdown.children.length > 5){
-            styleDropdown.selection = 5;
+        }else if(dropdown.children.length > 5){
+            dropdown.selection = 5;
             }else {
-                styleDropdown.selection = 3;
+                dropdown.selection = 3;
             }
-        styleDropdown.preferredSize = [120, 20];
+        dropdown.preferredSize = [120, 22];
+        rightRows.push({cb: cb, matchEdit: matchEdit, dropdown: dropdown, group: g});
+        rightListPanel.layout.layout(true);
     }
 
+    // 填充左侧
+    for (var key in replacements) {
+        if (replacements.hasOwnProperty(key)) {
+            var checked = !(key === "" || key === "？");
+            addLeftRow(key, replacements[key], checked);
+        }
+    }
+    // 填充右侧
+    for (var i = 0; i < objectStyleMatchText.length; i++) {
+        var opt = objectStyleMatchText[i];
+        addRightRow(opt.label, opt.style, opt.checked);
+    }
+
+    // 加号按钮事件
+    leftAddBtn.onClick = function () {
+        addLeftRow("", "", true);
+        leftListPanel.layout.layout(true);
+        dialog.layout.layout(true);
+        dialog.center();
+    };
+    rightAddBtn.onClick = function () {
+        addRightRow("", "", true);
+        rightListPanel.layout.layout(true);
+        dialog.layout.layout(true);
+        dialog.center();
+    };
+
     // 底部按钮组
-    var buttonGroup = mainGroup.add("group");
-    buttonGroup.orientation = "column";
-    var confirmButton = buttonGroup.add("button", undefined, "确定");
+    var buttonGroup = dialog.add("group");
+    buttonGroup.orientation = "row";
     var cancelButton = buttonGroup.add("button", undefined, "取消");
+    var confirmButton = buttonGroup.add("button", undefined, "确定");
 
     // 取消按钮点击事件
     cancelButton.onClick = function () {
@@ -611,50 +622,31 @@ function showThirdInterface(filePathInput) {
 
     // 确定按钮点击事件
     confirmButton.onClick = function () {
-        replacements = {}; // 文字替换规则
-
         // 获取左侧文字替换内容
-        var leftContentGroup = dialog.children[0].children[0].children[0].children[0].children[0];
-        for (var i = 0; i < leftContentGroup.children.length; i++) {
-            var panel = leftContentGroup.children[i];
-            if (panel.constructor.name === "Panel") {                
-                var checkbox = panel.children[0];
-                var fromInput = panel.children[1];
-                var toInput = panel.children[3];
-                
-                if (checkbox.value) {
-                    if (fromInput.text) {
-                        replacements[fromInput.text] = toInput.text;
-                    }
-                }
+        replacements = {};
+        for (var i = 0; i < leftRows.length; i++) {
+            var row = leftRows[i];
+            if (row.cb.value && row.fromEdit.text) {
+                replacements[row.fromEdit.text] = row.toEdit.text;
             }
         }
-
         // 获取右侧样式匹配内容
-        var rightStyleGroup = dialog.children[0].children[1].children[0].children[0];
-        for (var j = 0; j < rightStyleGroup.children.length; j++) {
-            var stylePanel = rightStyleGroup.children[j];
-            if (stylePanel.constructor.name === "Panel") {
-                var styleControls = stylePanel.children;
-                
-                var styleCheckbox = styleControls[0];
-                var matchInput = styleControls[2];
-                var styleList = styleControls[4];
-                
-                if (styleCheckbox.value) {
-                    styleRules.push({
-                        match: matchInput.text,
-                        style: styleList.selection.text
-                    });
-                }
+        styleRules = [];
+        for (var j = 0; j < rightRows.length; j++) {
+            var row = rightRows[j];
+            if (row.cb.value && row.matchEdit.text && row.dropdown.selection) {
+                styleRules.push({
+                    match: row.matchEdit.text,
+                    style: row.dropdown.selection.text
+                });
             }
         }
-
         dialog.close();
         processStart(filePathInput);
     };
     dialog.show();
-};
+}
+
 // 根据放置选项开始放入台词
 function processStart(filePathInput) {
     //获取台词文本，获取的同时已经替换掉替换列表中匹配的文本
