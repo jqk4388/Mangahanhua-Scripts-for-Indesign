@@ -1,7 +1,7 @@
 // Adobe InDesign Script: 自动拼音脚本
 // 主要功能：为选中文本框中的括号内容添加拼音注音
 // 作者：几千块
-// 日期：2025年3月30日
+// 日期：2025年4月26日
 // 版本：1.0
 
 // 主函数
@@ -36,8 +36,8 @@ function main() {
 function processTextFrame(textFrame) {
     var content = textFrame['parentStory']['contents'];
     var lines = content.split("\r");
-    var globalBracketsPositions = []; // 用于记录括号在整个文本框中的全局位置
-    var localBracketsPositions = [];  // 用于记录括号在每行中的相对位置
+    var globalBracketsPositions = [];
+    var localBracketsPositions = [];
 
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
@@ -49,12 +49,108 @@ function processTextFrame(textFrame) {
                 var targetText = line.substring(0, bracketInfo.start);
                 var rubyText = line.substring(bracketInfo.start + 1, bracketInfo.end);
 
-                // 获取默认字符数（当前行括号前的字符数）
-                var defaultChars = targetText.length;
+                // 检查是否有「」或『』包裹内容（允许后面紧跟括号）
+                var quoteTypes = [
+                    {open: "「", close: "」"},
+                    {open: "『", close: "』"},
+                    {open: "《", close: "》"},
+                    {open: "【", close: "】"},
+                    {open: "［", close: "］"},
+                    {open: "“", close: "”"},
+                    {open: "‘", close: "’"},
+                    {open: "〈", close: "〉"}
+                ];
+                var quoteInfo = null;
+                var quoteStart = -1, quoteEnd = -1, quoteInner = "", quoteInnerStart = 0;
+                for (var q = 0; q < quoteTypes.length; q++) {
+                    var openIdx = targetText.lastIndexOf(quoteTypes[q].open);
+                    var closeIdx = targetText.indexOf(quoteTypes[q].close, openIdx + 1);
+                    // 只要有一对引号包裹，且closeIdx紧跟在bracketInfo.start前或为末尾
+                    if (openIdx !== -1 && closeIdx !== -1 && closeIdx === targetText.length - 1) {
+                        quoteInfo = quoteTypes[q];
+                        quoteStart = openIdx;
+                        quoteEnd = closeIdx;
+                        quoteInner = targetText.substring(quoteStart + 1, quoteEnd);
+                        quoteInnerStart = quoteStart + 1;
+                        break;
+                    }
+                }
+
+                // 优化：查找整对引号，并判断是否与括号粘连，不粘连则忽略引号
+                var quotePairFound = false;
+                for (var q = 0; q < quoteTypes.length; q++) {
+                    var openIdx = targetText.lastIndexOf(quoteTypes[q].open);
+                    if (openIdx !== -1) {
+                        var closeIdx = targetText.indexOf(quoteTypes[q].close, openIdx + 1);
+                        if (closeIdx !== -1) {
+                            // 检查引号是否和括号粘连
+                            if (closeIdx === bracketInfo.start - 1) {
+                                // 引号和括号粘连，使用引号内内容
+                                quoteInfo = quoteTypes[q];
+                                quoteStart = openIdx;
+                                quoteEnd = closeIdx;
+                                quoteInner = targetText.substring(quoteStart + 1, quoteEnd);
+                                quoteInnerStart = quoteStart + 1;
+                                quotePairFound = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                var defaultChars, maxChars, startPos;
+                if (quotePairFound && quoteInner.length > 0) {
+                    defaultChars = maxChars = quoteInner.length;
+                    startPos = quoteInnerStart;
+                } else {
+                    // 没有粘连的引号，全部可加拼音
+                    defaultChars = maxChars = targetText.length;
+                    startPos = 0;
+                }
+
+                // 兼容“只有开引号”情况（如「蜥蜴战士）（测试加拼音）），且开引号和括号紧相连
+                if (!quotePairFound &&!quoteInfo) {
+                    for (var q = 0; q < quoteTypes.length; q++) {
+                        var openIdx = targetText.lastIndexOf(quoteTypes[q].open);
+                        if (openIdx !== -1 && openIdx < targetText.length - 1) {
+                            // 判断开引号后所有内容是否和括号紧相连
+                            if (bracketInfo.start === openIdx + 1 + targetText.substring(openIdx + 1).length) {
+                                quoteInner = targetText.substring(openIdx + 1);
+                                if (quoteInner.length > 0) {
+                                    defaultChars = maxChars = quoteInner.length;
+                                    startPos = openIdx + 1;
+                                    isQuoteAndBracketAdjacent = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 兼容“只有闭引号”情况
+                if (!quotePairFound &&!quoteInfo) {
+                    for (var q = 0; q < quoteTypes.length; q++) {
+                        var closeIdx = targetText.indexOf(quoteTypes[q].close);
+                        if (closeIdx !== -1 && closeIdx > 0) {
+                            quoteInner = targetText.substring(0, closeIdx);
+                            if (quoteInner.length > 0) {
+                                defaultChars = maxChars = quoteInner.length;
+                                startPos = 0;
+                                break;
+                            }
+                        }
+                    }
+                }
 
                 // 显示对话框
                 var prevLine = i > 0 ? lines[i - 1] : "";
-                var userInput = showRubyDialog(targetText, rubyText, prevLine, defaultChars);
+                var userInput = showRubyDialog(
+                    quoteInner.length > 0 ? quoteInner : targetText,
+                    rubyText,
+                    prevLine,
+                    defaultChars,
+                    maxChars
+                );
 
                 if (userInput === null) {
                     return; // 用户取消操作
@@ -62,40 +158,42 @@ function processTextFrame(textFrame) {
 
                 if (userInput > 0) {
                     try {
-                        // 应用拼音，基于当前行的字符位置
-                        applyRubyToLine(textFrame, i, bracketInfo.start - userInput, userInput, rubyText);
+                        // 计算拼音起始位置
+                        var applyStart = startPos + (maxChars - userInput);
+                        // 若用户输入小于最大值，则从引号内末尾往前数
+                        if (userInput !== maxChars) {
+                            applyStart = startPos + (maxChars - userInput);
+                        } else {
+                            applyStart = startPos;
+                        }
+                        applyRubyToLine(textFrame, i, applyStart, userInput, rubyText);
                     } catch (e) {
                         alert("应用拼音失败：" + e);
                     }
 
-                    // 如果有前一行，调整行距
                     if (i > 0) {
                         adjustPreviousLineLeading(textFrame, i);
                     }
 
-                    // 记录括号的全局位置
                     var currentPosition = 0;
-                    // 计算当前行之前的所有字符数
                     for (var k = 0; k < i; k++) {
-                        currentPosition += lines[k].length + 1; // +1 是为了包含换行符
+                        currentPosition += lines[k].length + 1;
                     }
                     globalBracketsPositions.push({
                         start: currentPosition + bracketInfo.start,
                         end: currentPosition + bracketInfo.end
                     });
 
-                    // 记录括号的相对位置（行内位置）
                     localBracketsPositions.push({
                         lineIndex: i,
                         start: bracketInfo.start,
                         end: bracketInfo.end
                     });
+                }
             }
         }
     }
-    }
 
-    // 删除所有括号及其内容
     removeBracketsWithFindReplace(textFrame, globalBracketsPositions);
     textFrame.fit(FitOptions.FRAME_TO_CONTENT);
 }
@@ -126,7 +224,7 @@ function findBrackets(text) {
     return results;
 }
 
-function showRubyDialog(targetText, rubyText, prevLine, defaultChars) {
+function showRubyDialog(targetText, rubyText, prevLine, defaultChars, maxChars) {
     var dialog = app.dialogs.add({name: "拼音设置"});
     
     try {
@@ -141,12 +239,8 @@ function showRubyDialog(targetText, rubyText, prevLine, defaultChars) {
         // 添加一个静态文本区域用于显示目标文本
         var targetTextRow = column.dialogRows.add();
         targetTextRow.staticTexts.add({staticLabel: "目标文本：" + targetText});
-        
-        // 添加一个静态文本区域用于显示拼音文本
         var rubyTextRow = column.dialogRows.add();
         rubyTextRow.staticTexts.add({staticLabel: "拼音文本：" + rubyText});
-        
-        // 添加输入框，放在最下方
         var inputRow = column.dialogRows.add({alignChildren: 'left'});
         inputRow.staticTexts.add({staticLabel: "注音字符数（0表示不注音）："});
         var charField = inputRow.integerEditboxes.add({
@@ -156,8 +250,8 @@ function showRubyDialog(targetText, rubyText, prevLine, defaultChars) {
         
         if (dialog.show()) {
             var value = charField.editValue;
-            if (value > targetText.length) {
-                alert("输入的字符数超过了目标文本长度！");
+            if (value > maxChars) {
+                alert("输入的字符数超过了可加拼音的文字长度！");
                 return 0;
             }
             return value;
