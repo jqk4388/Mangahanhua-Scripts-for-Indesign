@@ -117,7 +117,7 @@ function processTextFrame(textFrame) {
                 var prevLineRuby = 0;
                 if ((rubyText && rubyText.length > 0) && (targetText === "" || targetText == null) && (prevLine && prevLine.length > 0)) {
                     targetText = prevLine;
-                    maxChars = targetText.length;
+                    defaultChars = maxChars = targetText.length;
                     prevLineRuby = 1;
                 }
                 var userInput = showRubyDialog(
@@ -153,7 +153,7 @@ function processTextFrame(textFrame) {
 
                     if (prevLineRuby) {
                         if (i-1 > 0) {
-                            adjustPreviousLineLeading(textFrame, i-1);
+                            adjustPreviousLineLeading(textFrame, i-1);}
                             var currentPosition = 0;
                             for (var k = 0; k < i; k++) {
                                 currentPosition += lines[k].length + 1;
@@ -162,20 +162,19 @@ function processTextFrame(textFrame) {
                                 start: currentPosition + bracketInfo.start -1,
                                 end: currentPosition + bracketInfo.end
                             });
-                            }
                     }else {
-                    if (i > 0) {
-                        adjustPreviousLineLeading(textFrame, i);
-                        var currentPosition = 0;
-                        for (var k = 0; k < i; k++) {
-                            currentPosition += lines[k].length + 1;
-                        }
-                        globalBracketsPositions.push({
-                            start: currentPosition + bracketInfo.start,
-                            end: currentPosition + bracketInfo.end
-                        });
+                        if (i > 0) {
+                            adjustPreviousLineLeading(textFrame, i);}
+                            var currentPosition = 0;
+                            for (var k = 0; k < i; k++) {
+                                currentPosition += lines[k].length + 1;
+                            }
+                            globalBracketsPositions.push({
+                                start: currentPosition + bracketInfo.start,
+                                end: currentPosition + bracketInfo.end
+                            });
                     }
-                    }
+                    
 
 
                     localBracketsPositions.push({
