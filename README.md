@@ -4,13 +4,13 @@
 ***
 脚本安装路径：`C:\Users\xxx\AppData\Roaming\Adobe\InDesign\Version 20.0-J\zh_CN\Scripts\Scripts Panel`
 
-在脚本窗口中右键用户文件夹打开资源管理器把本项目放在`Scripts Panel`文件夹下
+或者在脚本窗口中右键用户文件夹打开资源管理器把本项目放在`Scripts Panel`文件夹下
 ***
 ## 重要说明
 
-**这些脚本需作为套件配合使用。** 大多数脚本依赖 `Library/KTUlib.jsx` 文件中的函数，需确保该文件与脚本处于同级目录。
+**这些脚本需作为套件配合使用。** 原版脚本依赖 `Library/KTUlib.jsx` 文件中的函数，需确保该文件与脚本处于同级目录。
 
-**完整包下载方式**：点击文件列表上方的绿色 **Code** 按钮，选择 "Download Zip"。解压到 InDesign 脚本文件夹根目录即可使用。
+**[下载](https://github.com/jqk4388/Mangahanhua-Scripts-for-Indesign/releases)**：
 ***
 # 新增汉化专用脚本
 * 1.开局新建图层图框.jsx

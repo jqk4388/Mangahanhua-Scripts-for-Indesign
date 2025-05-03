@@ -1,6 +1,3 @@
-// 样式匹配脚本 for Adobe InDesign
-// 兼容ES3，基础语法，注释详细
-
 var version = "1.1";
 
 // 主入口
