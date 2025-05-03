@@ -60,43 +60,14 @@ function processTextFrame(textFrame) {
                     {open: "‘", close: "’"},
                     {open: "〈", close: "〉"}
                 ];
-                var quoteInfo = null;
-                var quoteStart = -1, quoteEnd = -1, quoteInner = "", quoteInnerStart = 0;
-                for (var q = 0; q < quoteTypes.length; q++) {
-                    var openIdx = targetText.lastIndexOf(quoteTypes[q].open);
-                    var closeIdx = targetText.indexOf(quoteTypes[q].close, openIdx + 1);
-                    // 只要有一对引号包裹，且closeIdx紧跟在bracketInfo.start前或为末尾
-                    if (openIdx !== -1 && closeIdx !== -1 && closeIdx === targetText.length - 1) {
-                        quoteInfo = quoteTypes[q];
-                        quoteStart = openIdx;
-                        quoteEnd = closeIdx;
-                        quoteInner = targetText.substring(quoteStart + 1, quoteEnd);
-                        quoteInnerStart = quoteStart + 1;
-                        break;
-                    }
-                }
 
-                // 优化：查找整对引号，并判断是否与括号粘连，不粘连则忽略引号
-                var quotePairFound = false;
-                for (var q = 0; q < quoteTypes.length; q++) {
-                    var openIdx = targetText.lastIndexOf(quoteTypes[q].open);
-                    if (openIdx !== -1) {
-                        var closeIdx = targetText.indexOf(quoteTypes[q].close, openIdx + 1);
-                        if (closeIdx !== -1) {
-                            // 检查引号是否和括号粘连
-                            if (closeIdx === bracketInfo.start - 1) {
-                                // 引号和括号粘连，使用引号内内容
-                                quoteInfo = quoteTypes[q];
-                                quoteStart = openIdx;
-                                quoteEnd = closeIdx;
-                                quoteInner = targetText.substring(quoteStart + 1, quoteEnd);
-                                quoteInnerStart = quoteStart + 1;
-                                quotePairFound = true;
-                                break;
-                            }
-                        }
-                    }
-                }
+                var quoteResult = findQuoteInfo(targetText, bracketInfo.start, quoteTypes);
+                var quoteInfo = quoteResult.quoteInfo;
+                var quoteStart = quoteResult.start;
+                var quoteEnd = quoteResult.end;
+                var quoteInner = quoteResult.inner;
+                var quoteInnerStart = quoteResult.innerStart;
+                var quotePairFound = quoteResult.pairFound;
 
                 var defaultChars, maxChars, startPos;
                 if (quotePairFound && quoteInner.length > 0) {
@@ -109,7 +80,7 @@ function processTextFrame(textFrame) {
                 }
 
                 // 兼容“只有开引号”情况（如「蜥蜴战士）（测试加拼音）），且开引号和括号紧相连
-                if (!quotePairFound &&!quoteInfo) {
+                if (!quotePairFound && !quoteInfo) {
                     for (var q = 0; q < quoteTypes.length; q++) {
                         var openIdx = targetText.lastIndexOf(quoteTypes[q].open);
                         if (openIdx !== -1 && openIdx < targetText.length - 1) {
@@ -119,7 +90,6 @@ function processTextFrame(textFrame) {
                                 if (quoteInner.length > 0) {
                                     defaultChars = maxChars = quoteInner.length;
                                     startPos = openIdx + 1;
-                                    isQuoteAndBracketAdjacent = true;
                                     break;
                                 }
                             }
@@ -128,7 +98,7 @@ function processTextFrame(textFrame) {
                 }
 
                 // 兼容“只有闭引号”情况
-                if (!quotePairFound &&!quoteInfo) {
+                if (!quotePairFound && !quoteInfo) {
                     for (var q = 0; q < quoteTypes.length; q++) {
                         var closeIdx = targetText.indexOf(quoteTypes[q].close);
                         if (closeIdx !== -1 && closeIdx > 0) {
@@ -144,6 +114,12 @@ function processTextFrame(textFrame) {
 
                 // 显示对话框
                 var prevLine = i > 0 ? lines[i - 1] : "";
+                var prevLineRuby = 0;
+                if ((rubyText && rubyText.length > 0) && (targetText === "" || targetText == null) && (prevLine && prevLine.length > 0)) {
+                    targetText = prevLine;
+                    maxChars = targetText.length;
+                    prevLineRuby = 1;
+                }
                 var userInput = showRubyDialog(
                     quoteInner.length > 0 ? quoteInner : targetText,
                     rubyText,
@@ -166,23 +142,41 @@ function processTextFrame(textFrame) {
                         } else {
                             applyStart = startPos;
                         }
+                        if (prevLineRuby) {
+                            applyRubyToLine(textFrame, i-1, applyStart, userInput, rubyText);
+                        }else {
                         applyRubyToLine(textFrame, i, applyStart, userInput, rubyText);
+                        }
                     } catch (e) {
                         alert("应用拼音失败：" + e);
                     }
 
+                    if (prevLineRuby) {
+                        if (i-1 > 0) {
+                            adjustPreviousLineLeading(textFrame, i-1);
+                            var currentPosition = 0;
+                            for (var k = 0; k < i; k++) {
+                                currentPosition += lines[k].length + 1;
+                            }
+                            globalBracketsPositions.push({
+                                start: currentPosition + bracketInfo.start -1,
+                                end: currentPosition + bracketInfo.end
+                            });
+                            }
+                    }else {
                     if (i > 0) {
                         adjustPreviousLineLeading(textFrame, i);
+                        var currentPosition = 0;
+                        for (var k = 0; k < i; k++) {
+                            currentPosition += lines[k].length + 1;
+                        }
+                        globalBracketsPositions.push({
+                            start: currentPosition + bracketInfo.start,
+                            end: currentPosition + bracketInfo.end
+                        });
+                    }
                     }
 
-                    var currentPosition = 0;
-                    for (var k = 0; k < i; k++) {
-                        currentPosition += lines[k].length + 1;
-                    }
-                    globalBracketsPositions.push({
-                        start: currentPosition + bracketInfo.start,
-                        end: currentPosition + bracketInfo.end
-                    });
 
                     localBracketsPositions.push({
                         lineIndex: i,
@@ -229,12 +223,6 @@ function showRubyDialog(targetText, rubyText, prevLine, defaultChars, maxChars) 
     
     try {
         var column = dialog.dialogColumns.add({alignChildren: 'left'});
-        
-        // // 添加一个静态文本区域用于显示前一行内容
-        // if (prevLine !== "") {
-        //     var prevLineRow = column.dialogRows.add();
-        //     prevLineRow.staticTexts.add({staticLabel: "前一行内容：" + prevLine});
-        // }
         
         // 添加一个静态文本区域用于显示目标文本
         var targetTextRow = column.dialogRows.add();
@@ -319,7 +307,6 @@ function removeBracketsWithFindReplace(textFrame, bracketsPositions) {
 
             // 验证范围是否有效
             var range = textFrame.characters.itemByRange(start, end);
-            // alert("删除范围：" + start + " - " + end);
             if (range.isValid) {
                 range.remove();
             }
@@ -327,4 +314,54 @@ function removeBracketsWithFindReplace(textFrame, bracketsPositions) {
     } catch (e) {
         alert("删除括号时发生错误：" + e);
     }
+}
+
+function findQuoteInfo(targetText, bracketStart, quoteTypes) {
+    var result = {
+        quoteInfo: null,
+        start: -1,
+        end: -1,
+        inner: "",
+        innerStart: 0,
+        pairFound: false
+    };
+
+    // 检查完整引号对
+    for (var q = 0; q < quoteTypes.length; q++) {
+        var openIdx = targetText.lastIndexOf(quoteTypes[q].open);
+        if (openIdx !== -1) {
+            var closeIdx = targetText.indexOf(quoteTypes[q].close, openIdx + 1);
+            if (closeIdx !== -1) {
+                // 检查引号是否和括号粘连
+                if (closeIdx === targetText.length - 1) {
+                    result.quoteInfo = quoteTypes[q];
+                    result.start = openIdx;
+                    result.end = closeIdx;
+                    result.inner = targetText.substring(openIdx + 1, closeIdx);
+                    result.innerStart = openIdx + 1;
+                    result.pairFound = true;
+                    return result;
+                }
+            }
+        }
+    }
+
+    // 检查粘连的引号对
+    for (var q = 0; q < quoteTypes.length; q++) {
+        var openIdx = targetText.lastIndexOf(quoteTypes[q].open);
+        if (openIdx !== -1) {
+            var closeIdx = targetText.indexOf(quoteTypes[q].close, openIdx + 1);
+            if (closeIdx !== -1 && closeIdx === bracketStart - 1) {
+                result.quoteInfo = quoteTypes[q];
+                result.start = openIdx;
+                result.end = closeIdx;
+                result.inner = targetText.substring(openIdx + 1, closeIdx);
+                result.innerStart = openIdx + 1;
+                result.pairFound = true;
+                return result;
+            }
+        }
+    }
+
+    return result;
 }
