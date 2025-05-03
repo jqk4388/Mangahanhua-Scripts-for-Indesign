@@ -35,7 +35,7 @@ function main() {
 
 function processTextFrame(textFrame) {
     var content = textFrame['parentStory']['contents'];
-    var lines = content.split("\r");
+    var lines = content.split(/\r|\n/);
     var globalBracketsPositions = [];
     var localBracketsPositions = [];
 

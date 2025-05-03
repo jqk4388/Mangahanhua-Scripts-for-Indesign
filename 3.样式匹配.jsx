@@ -1,7 +1,7 @@
 // 样式匹配脚本 for Adobe InDesign
 // 兼容ES3，基础语法，注释详细
 
-var version = "1.0";
+var version = "1.1";
 
 // 主入口
 function main() {
@@ -266,32 +266,42 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
     // 主分组
     var mainGroup = win.add("group");
     mainGroup.orientation = "row";
+    mainGroup.maximumSize.height = 600;
+    mainGroup.alignment = "left";
 
     // 左侧panel
     var leftPanel = mainGroup.add("panel", undefined, "字体-字符样式");
+    leftPanel.orientation = "column";
+    leftPanel.alignment = ['left', 'top'];
     leftPanel.alignChildren = "fill";
-    leftPanel.preferredSize = [250, 550];
+    leftPanel.preferredSize = [250, 550];    
     var leftAddBtn = leftPanel.add("button", undefined, "+");
-    var leftListPanel = leftPanel.add("panel");
+    var leftexcel = leftPanel.add ("panel", undefined, "");
+    leftexcel.orientation = "row";
+    var leftListPanel = leftexcel.add("panel");
     leftListPanel.preferredSize = [230, 500];
     leftListPanel.alignChildren = "top";
+    leftListPanel.alignment = ['left', 'top'];
     leftListPanel.orientation = "column";
     leftListPanel.margins = [0,0,0,0];
     leftListPanel.spacing = 2;
-    leftListPanel.maximumSize.height = 900;
 
     // 右侧panel
     var rightPanel = mainGroup.add("panel", undefined, "字号-段落样式");
+    rightPanel.orientation = "column";
+    rightPanel.alignment = ['right', 'top'];
     rightPanel.alignChildren = "fill";
     rightPanel.preferredSize = [250, 550];
     var rightAddBtn = rightPanel.add("button", undefined, "+");
-    var rightListPanel = rightPanel.add("panel");
+    var rightexcel = rightPanel.add ("panel", undefined, "");
+    rightexcel.orientation = "row";
+    var rightListPanel = rightexcel.add("panel");
     rightListPanel.preferredSize = [230, 500];
     rightListPanel.alignChildren = "top";
+    rightListPanel.alignment = ['right', 'top'];
     rightListPanel.orientation = "column";
     rightListPanel.margins = [0,0,0,0];
     rightListPanel.spacing = 2;
-    rightListPanel.maximumSize.height = 900;
 
     // 行数据存储
     var leftRows = [];
@@ -362,15 +372,39 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
         var styleName = config["font_style_" + i] || null;
         addLeftRow(fontList[i], styleName);
     }
+    // 在填充左侧列表后添加如下代码
+    var leftbar = leftexcel.add("scrollbar", [0,0,20,700]);
+    // 计算内容总高度和可见区域高度
+    var totalHeight = leftRows.length * 24; // 每行高24
+    var visibleHeight = 500; // leftListPanel的preferredSize.height
+    // 设置滚动条最大值为(总高度-可见区域)
+    leftbar.maxvalue = Math.max(0, totalHeight - visibleHeight);
+    leftbar.stepdelta = 24; // 设置为单行高度
+    leftbar.jumpdelta = visibleHeight; // 设置翻页距离为可见区域高度
+    leftbar.onChanging = function () {
+        leftListPanel.location.y = -1 * this.value;
+    }
+    leftbar.alignment = ['right', 'top'];
     // 填充右侧
     for (var j = 0; j < sizeList.length; j++) {
         var styleName = config["size_style_" + j] || null;
         addRightRow(sizeList[j], styleName);
     }
+    var rightbar = rightexcel.add("scrollbar", [0,0,20,700]);
+    var totalHeightR = rightRows.length * 24;
+    var visibleHeightR = 500;
+    rightbar.maxvalue = Math.max(0, totalHeightR - visibleHeightR);
+    rightbar.stepdelta = 24;
+    rightbar.jumpdelta = visibleHeightR;
+    rightbar.onChanging = function () {
+        rightListPanel.location.y = -1 * this.value;
+    }
+    rightbar.alignment = ['right', 'top'];
 
     // 按钮区
-    var btnGroup = win.add("group");
-    btnGroup.orientation = "row";
+    var btnGroup = mainGroup.add("group");
+    btnGroup.orientation = "column";
+    btnGroup.alignment = ['right', 'top'];
     btnGroup.alignChildren = "fill";
     var okBtn = btnGroup.add("button", undefined, "确定");
     var cancelBtn = btnGroup.add("button", undefined, "取消");
@@ -398,6 +432,10 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
         rightRows: rightRows,
         leftAddBtn: leftAddBtn,
         rightAddBtn: rightAddBtn,
+        ListListPanel: leftListPanel,
+        rightListPanel: rightListPanel,
+        leftbar: leftbar,
+        rightbar: rightbar,
         okBtn: okBtn,
         cancelBtn: cancelBtn,
         importBtn: importBtn,
@@ -516,6 +554,7 @@ function updateUIFromConfig(ui, config) {
             }
             i++;
         }
+        updateScrollbar(ui.leftListPanel, ui.leftRows, ui.leftbar, 500);
         var j = 0;
         while (config["size_" + j]) {
             var sizeName = config["size_" + j];
@@ -536,6 +575,7 @@ function updateUIFromConfig(ui, config) {
             }
             j++;
         }
+        updateScrollbar(ui.rightListPanel, ui.rightRows, ui.rightbar, 500);
     } catch (e) {}
 }
 
@@ -642,6 +682,16 @@ function ClearBrackets(textFrames) {
         app.findGrepPreferences.properties = savedFindPrefs;
         app.changeGrepPreferences.properties = savedChangePrefs;
     } catch (e) {}
+}
+
+//更新滚动条长度
+function updateScrollbar(panel, rows, scrollbar, visibleHeight) {
+    var totalHeight = rows.length * 24; // 每行高24
+    scrollbar.maxvalue = Math.max(0, totalHeight - visibleHeight);
+    scrollbar.stepdelta = 24;
+    scrollbar.jumpdelta = visibleHeight;
+    panel.location.y = 0; // 重置面板位置
+    scrollbar.value = 0; // 重置滚动条位置
 }
 
 // 启动脚本
