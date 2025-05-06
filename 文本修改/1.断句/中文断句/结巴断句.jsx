@@ -145,7 +145,21 @@ function getTextFrames(range) {
         var currentPage = app.activeWindow.activePage;
         textFrames = currentPage.textFrames.everyItem().getElements();
     } else if (range === "entireDocument") {
-        textFrames = doc.textFrames.everyItem().getElements();
+        var allTextFrames = doc.textFrames.everyItem().getElements();
+        var normalPageTextFrames = [];
+
+        for (var i = 0; i < allTextFrames.length; i++) {
+            var tf = allTextFrames[i];
+            try {
+                // 如果 textFrame 所在的 parentPage 存在，并且该页面不是主页
+                if (tf.parentPage != null && tf.parentPage.parent.constructor.name != "MasterSpread") {
+                    normalPageTextFrames.push(tf);
+                }
+            } catch (e) {
+                alert("发生错误: " + e.message);
+            }
+        }
+        textFrames = normalPageTextFrames;
     }
 
     return textFrames;

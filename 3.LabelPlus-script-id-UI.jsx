@@ -1,8 +1,8 @@
 // LP翻译稿处理工具
 // 该脚本用于处理LP翻译稿，将文本插入到InDesign文档中，并根据分组应用样式
 // 作者：几千块
-// 日期：20250424
-var version = "2.0";
+// 日期：20250505
+var version = "2.1";
 // 声明全局变量
 var totalPages = 0;
 var doc = app.activeDocument;
@@ -344,7 +344,7 @@ function createUserInterface() {
 
     // 取消按钮点击事件
     cancelButton.onClick = function () {
-        dialog.close();
+        dialog.close(0);
     };
 
     // 确定按钮点击事件
@@ -355,10 +355,17 @@ function createUserInterface() {
             alert("请选择一个文件！");
             return;
         }
-        dialog.close();
-        showSecondInterface(filePathInput.text);
+        dialog.close(1);
     };
-    dialog.show(); 
+    var result = dialog.show(); 
+    if (result === 0) {
+        return null;
+    }
+    if (result === 1) {
+        showSecondInterface(filePathInput.text);
+    }
+
+
     return filePathInput.text; 
 }
 // 创建第二个用户界面匹配模式
@@ -448,7 +455,7 @@ function showSecondInterface(filePathInput) {
 
     // 取消按钮点击事件
     cancelButton.onClick = function () {
-        dialog.close();
+        dialog.close(0);
     };
 
     // 确定按钮点击事件
@@ -481,11 +488,15 @@ function showSecondInterface(filePathInput) {
             return;
         }
 
-        dialog.close();
-        // 调用第三界面
-        showThirdInterface(filePathInput);
+        dialog.close(1);
     };
-    dialog.show();
+    var result = dialog.show(); 
+    if (result === 0) {
+        return null;
+    }
+    if (result === 1) {
+        showThirdInterface(filePathInput);
+    }
 }
 
 // 创建第三个用户界面替换选项
@@ -617,7 +628,7 @@ function showThirdInterface(filePathInput) {
 
     // 取消按钮点击事件
     cancelButton.onClick = function () {
-        dialog.close();
+        dialog.close(0);
     };
 
     // 确定按钮点击事件
@@ -641,10 +652,15 @@ function showThirdInterface(filePathInput) {
                 });
             }
         }
-        dialog.close();
-        processStart(filePathInput);
+        dialog.close(1);
     };
-    dialog.show();
+    var result = dialog.show(); 
+    if (result === 0) {
+        return null;
+    }
+    if (result === 1) {
+        processStart(filePathInput);
+    }
 }
 
 // 根据放置选项开始放入台词

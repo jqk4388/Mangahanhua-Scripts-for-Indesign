@@ -1,4 +1,4 @@
-var version = "1.1";
+var version = "1.2";
 
 // 主入口
 function main() {
@@ -38,9 +38,21 @@ function main() {
 
         // 6. UI事件绑定
         bindUIEvents(ui, fontList, sizeList, config, textFrames, styleCheck.charStyle, styleCheck.paraStyle);
-
+        
         // 7. 显示UI
-        ui.win.show();
+        var result = ui.win.show();
+        if (result === 0) {
+            return null;
+        }
+        if (result === 1) {
+            var charStyle = styleCheck.charStyle;
+            var paraStyle = styleCheck.paraStyle;
+            saveConfigFile(config);
+            // 应用样式
+            applyStyles(textFrames, config, charStyle, paraStyle);
+            //用Grep查找清除花括号{}中的内容
+            ClearBrackets(textFrames);
+        }
 
     } catch (e) {
         alert("脚本发生错误：" + e.message);
@@ -121,16 +133,15 @@ function checkStyleCount() {
 
 // 读取配置文件
 function readConfigFile() {
-var dirSeparator = $.os.search(/windows/i) === -1 ? '/' : '\\';
-var dataPath = Folder.appData.fsName + dirSeparator + "style_replace";
-var dataFolder = new Folder(dataPath);
+    var dirSeparator = $.os.indexOf("Windows") >= 0 ? "\\" : "/";
+    var dataPath = Folder.userData + dirSeparator + "style_replace";
     var config = {};
     try {
-        var folder = Folder(dataPath + dirSeparator);
+        var folder = new Folder(dataPath);
         if (!folder.exists) {
             folder.create();
         }
-        var file = File(dataPath + dirSeparator + "style_replace.ini");
+        var file = new File(dataPath + dirSeparator + "style_replace.ini");
         if (file.exists) {
             file.open("r");
             while (!file.eof) {
@@ -145,7 +156,6 @@ var dataFolder = new Folder(dataPath);
             file.close();
         }
     } catch (e) {
-        // 读取失败返回空对象
         config = {};
     }
     return config;
@@ -153,24 +163,24 @@ var dataFolder = new Folder(dataPath);
 
 // 保存配置文件
 function saveConfigFile(config, filePath) {
-var dirSeparator = $.os.search(/windows/i) === -1 ? '/' : '\\';
-var dataPath = Folder.appData.fsName + dirSeparator + "style_replace";
-var dataFolder = new Folder(dataPath);
-if (!dataFolder.exists) {
-    if (!dataFolder.create()) {
-        dataPath = Folder.temp.fsName;
+    var dirSeparator = $.os.indexOf("Windows") >= 0 ? "\\" : "/";
+    var dataPath = Folder.userData + dirSeparator + "style_replace";
+    var dataFolder = new Folder(dataPath);
+    if (!dataFolder.exists) {
+        if (!dataFolder.create()) {
+            dataPath = Folder.temp.fsName;
+        }
     }
-}
     try {
         var file;
         if (filePath) {
-            file = File(filePath);
+            file = new File(filePath);
         } else {
-            var folder = Folder(dataPath + dirSeparator);
+            var folder = new Folder(dataPath);
             if (!folder.exists) {
                 folder.create();
             }
-            file = File(dataPath + dirSeparator + "style_replace.ini");
+            file = new File(dataPath + dirSeparator + "style_replace.ini");
         }
         file.encoding = "UTF-8";
         file.open("w");
@@ -185,11 +195,14 @@ if (!dataFolder.exists) {
     }
 }
 
-// 获取页面中所有文本框，包括编组中的文本框
+// 获取页面中所有文本框，包括编组中的文本框 (跳过隐藏图层)
 function getAllTextFrames(page) {
     var textFrames = [];
 
     function collectTextFrames(item) {
+        // 新增图层可见性判断
+        if (item.itemLayer && !item.itemLayer.visible) return;
+        
         if (item.constructor.name === "TextFrame") {
             textFrames.push(item);
         } else if (item.constructor.name === "Group") {
@@ -273,7 +286,7 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
     leftPanel.alignChildren = "fill";
     leftPanel.preferredSize = [250, 550];    
     var leftAddBtn = leftPanel.add("button", undefined, "+");
-    var leftexcel = leftPanel.add ("panel", undefined, "");
+    var leftexcel = leftPanel.add ("group", undefined, "");
     leftexcel.orientation = "row";
     var leftListPanel = leftexcel.add("panel");
     leftListPanel.preferredSize = [230, 500];
@@ -282,6 +295,10 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
     leftListPanel.orientation = "column";
     leftListPanel.margins = [0,0,0,0];
     leftListPanel.spacing = 2;
+    // 固定高度的滚动条
+    var leftbar = leftexcel.add("scrollbar", undefined, 0, 0, 100);
+    leftbar.preferredSize = [20, 500];
+    leftbar.alignment = ['right', 'top'];
 
     // 右侧panel
     var rightPanel = mainGroup.add("panel", undefined, "字号-段落样式");
@@ -290,7 +307,7 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
     rightPanel.alignChildren = "fill";
     rightPanel.preferredSize = [250, 550];
     var rightAddBtn = rightPanel.add("button", undefined, "+");
-    var rightexcel = rightPanel.add ("panel", undefined, "");
+    var rightexcel = rightPanel.add ("group", undefined, "");
     rightexcel.orientation = "row";
     var rightListPanel = rightexcel.add("panel");
     rightListPanel.preferredSize = [230, 500];
@@ -299,6 +316,10 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
     rightListPanel.orientation = "column";
     rightListPanel.margins = [0,0,0,0];
     rightListPanel.spacing = 2;
+    // 固定高度的滚动条
+    var rightbar = rightexcel.add("scrollbar", undefined, 0, 0, 100);
+    rightbar.preferredSize = [20, 500];
+    rightbar.alignment = ['right', 'top'];
 
     // 行数据存储
     var leftRows = [];
@@ -347,16 +368,24 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
         // 自动匹配最接近的段落样式
         if (sizeName && paraStyleNames.length > 0) {
             var num = parseFloat(sizeName);
-            var minDiff = 99999, selIdx = -1;
+            var selIdx = -1;
+            if (isNaN(num)) {
+            // 如果sizeName不是数字，匹配第二个段落样式
+            if (paraStyleNames.length > 1) {
+                selIdx = 1;
+            }
+            } else {
+            var minDiff = 99999;
             for (var i = 0; i < paraStyleNames.length; i++) {
                 var psNum = parseFloat(paraStyleNames[i]);
-                if (!isNaN(psNum) && !isNaN(num)) {
-                    var diff = Math.abs(psNum - num);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        selIdx = i;
-                    }
+                if (!isNaN(psNum)) {
+                var diff = Math.abs(psNum - num);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    selIdx = i;
                 }
+                }
+            }
             }
             if (selIdx >= 0) dropdown.selection = selIdx;
         }
@@ -369,8 +398,6 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
         var styleName = config["font_style_" + i] || null;
         addLeftRow(fontList[i], styleName);
     }
-    // 在填充左侧列表后添加如下代码
-    var leftbar = leftexcel.add("scrollbar", [0,0,20,700]);
     // 计算内容总高度和可见区域高度
     var totalHeight = leftRows.length * 24; // 每行高24
     var visibleHeight = 500; // leftListPanel的preferredSize.height
@@ -381,13 +408,12 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
     leftbar.onChanging = function () {
         leftListPanel.location.y = -1 * this.value;
     }
-    leftbar.alignment = ['right', 'top'];
+
     // 填充右侧
     for (var j = 0; j < sizeList.length; j++) {
         var styleName = config["size_style_" + j] || null;
         addRightRow(sizeList[j], styleName);
     }
-    var rightbar = rightexcel.add("scrollbar", [0,0,20,700]);
     var totalHeightR = rightRows.length * 24;
     var visibleHeightR = 500;
     rightbar.maxvalue = Math.max(0, totalHeightR - visibleHeightR);
@@ -396,7 +422,6 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
     rightbar.onChanging = function () {
         rightListPanel.location.y = -1 * this.value;
     }
-    rightbar.alignment = ['right', 'top'];
 
     // 按钮区
     var btnGroup = mainGroup.add("group");
@@ -461,38 +486,78 @@ function bindUIEvents(ui, fontList, sizeList, config, textFrames, charStyle, par
                 config["size_style_" + j] = row.dropdown.selection ? row.dropdown.selection.text : "";
             }
         }
-        saveConfigFile(config);
-        // 应用样式
-        applyStyles(textFrames, config, charStyle, paraStyle);
-        //用Grep查找清除花括号{}中的内容
-        ClearBrackets(textFrames);
-        
-        ui.win.close();
+        ui.win.close(1);
+    return {
+            config: config,
+            charStyle: charStyle,
+            paraStyle: paraStyle,
+            fontList: fontList,
+            sizeList: sizeList,
+    };
     };
     // 取消按钮
     ui.cancelBtn.onClick = function () {
-        ui.win.close();
+        ui.win.close(0);
     };
     // 导入配置
     ui.importBtn.onClick = function () {
         var file = File.openDialog("选择配置文件", "*.ini");
         if (file && file.exists) {
-            var newConfig = {};
-            file.open("r");
-            while (!file.eof) {
-                var line = file.readln();
-                var eq = line.indexOf("=");
-                if (eq > 0) {
-                    var key = line.substring(0, eq);
-                    var val = line.substring(eq + 1);
-                    newConfig[key] = val;
+            file.encoding = "UTF-8";
+            if (file.open("r")) {
+                var newConfig = {};
+                while (!file.eof) {
+                    var line = file.readln();
+    
+                    // 手动去除行首尾空格（代替 trim）
+                    while (line.charAt(0) === " " || line.charAt(0) === "\t") {
+                        line = line.substring(1);
+                    }
+                    while (line.length > 0 && 
+                           (line.charAt(line.length - 1) === " " || line.charAt(line.length - 1) === "\t")) {
+                        line = line.substring(0, line.length - 1);
+                    }
+    
+                    // 跳过空行和注释行（以 # 或 ; 开头）
+                    if (line === "" || line.charAt(0) === "#" || line.charAt(0) === ";") {
+                        continue;
+                    }
+    
+                    var eq = line.indexOf("=");
+                    if (eq > 0) {
+                        var key = line.substring(0, eq);
+                        var val = line.substring(eq + 1);
+    
+                        // 去除 key 和 val 两边的空格
+                        while (key.charAt(0) === " " || key.charAt(0) === "\t") {
+                            key = key.substring(1);
+                        }
+                        while (key.length > 0 && 
+                               (key.charAt(key.length - 1) === " " || key.charAt(key.length - 1) === "\t")) {
+                            key = key.substring(0, key.length - 1);
+                        }
+    
+                        while (val.charAt(0) === " " || val.charAt(0) === "\t") {
+                            val = val.substring(1);
+                        }
+                        while (val.length > 0 && 
+                               (val.charAt(val.length - 1) === " " || val.charAt(val.length - 1) === "\t")) {
+                            val = val.substring(0, val.length - 1);
+                        }
+    
+                        newConfig[key] = val;
+                    }
                 }
+                file.close();
+    
+                // 更新 UI
+                updateUIFromConfig(ui, newConfig);
+            } else {
+                alert("无法打开文件：" + file.fsName);
             }
-            file.close();
-            // 更新UI
-            updateUIFromConfig(ui, newConfig);
         }
     };
+    
     // 导出配置
     ui.exportBtn.onClick = function () {
         var file = File.saveDialog("导出配置为", "ini文件:*.ini");
@@ -520,26 +585,23 @@ function bindUIEvents(ui, fontList, sizeList, config, textFrames, charStyle, par
 // 根据配置更新UI
 function updateUIFromConfig(ui, config) {
     try {
-        // 清空
-        for (var i = ui.leftRows.length - 1; i >= 0; i--) {
-            ui.leftRows[i].group.parent.remove(ui.leftRows[i].group);
-        }
-        ui.leftRows.length = 0;
-        for (var j = ui.rightRows.length - 1; j >= 0; j--) {
-            ui.rightRows[j].group.parent.remove(ui.rightRows[j].group);
-        }
-        ui.rightRows.length = 0;
-        // 恢复
+        // 处理左侧（字体-字符样式）
+        var unmatchedFonts = [];
+        var unmatchedRows = [];
+        // 先构建ini配置的字体映射
+        var iniFontMap = {};
         var i = 0;
         while (config["font_" + i]) {
-            var fontName = config["font_" + i];
-            var styleName = config["font_style_" + i];
-            var row = null;
-            // add row
-            if (typeof ui.leftAddBtn.onClick === "function") {
-                ui.leftAddBtn.onClick();
-                row = ui.leftRows[ui.leftRows.length - 1];
-                row.edit.text = fontName;
+            iniFontMap[config["font_" + i]] = config["font_style_" + i];
+            i++;
+        }
+        // 遍历当前面板的行
+        for (var idx = 0; idx < ui.leftRows.length; idx++) {
+            var row = ui.leftRows[idx];
+            var fontName = row.edit.text;
+            if (fontName && iniFontMap.hasOwnProperty(fontName)) {
+                // 存在于ini，直接替换styleName
+                var styleName = iniFontMap[fontName];
                 if (styleName && row.dropdown.items.length > 0) {
                     for (var k = 0; k < row.dropdown.items.length; k++) {
                         if (row.dropdown.items[k].text == styleName) {
@@ -548,18 +610,46 @@ function updateUIFromConfig(ui, config) {
                         }
                     }
                 }
+            } else if (fontName) {
+                // 不存在于ini，收集
+                unmatchedFonts.push(fontName);
+                unmatchedRows.push(row);
             }
-            i++;
         }
-        updateScrollbar(ui.leftListPanel, ui.leftRows, ui.leftbar, 500);
+
+        // 如果有未匹配的字体，弹窗提示
+        if (unmatchedFonts.length > 0) {
+            var msg = "配置文件已导入！\n以下字体未在配置中找到：\n" + unmatchedFonts.join("，") + "\n是否设置为默认字符样式？";
+            var userChoice = confirm(msg);
+            if (userChoice) {
+                for (var i = 0; i < unmatchedRows.length; i++) {
+                    var row = unmatchedRows[i];
+                    if (row.dropdown.items.length > 0) {
+                        row.dropdown.selection = 0;
+                    }
+                }
+            }
+            // 否则不变
+        }
+
+        // 处理右侧（字号-段落样式）（保持原有逻辑）
         var j = 0;
         while (config["size_" + j]) {
             var sizeName = config["size_" + j];
             var styleName = config["size_style_" + j];
-            var row = null;
-            if (typeof ui.rightAddBtn.onClick === "function") {
+            if (ui.rightRows[j]) {
+                ui.rightRows[j].edit.text = sizeName;
+                if (styleName && ui.rightRows[j].dropdown.items.length > 0) {
+                    for (var k = 0; k < ui.rightRows[j].dropdown.items.length; k++) {
+                        if (ui.rightRows[j].dropdown.items[k].text == styleName) {
+                            ui.rightRows[j].dropdown.selection = k;
+                            break;
+                        }
+                    }
+                }
+            } else if (typeof ui.rightAddBtn.onClick === "function") {
                 ui.rightAddBtn.onClick();
-                row = ui.rightRows[ui.rightRows.length - 1];
+                var row = ui.rightRows[ui.rightRows.length - 1];
                 row.edit.text = sizeName;
                 if (styleName && row.dropdown.items.length > 0) {
                     for (var k = 0; k < row.dropdown.items.length; k++) {
@@ -582,6 +672,16 @@ function applyStyles(textFrames, config, charStyleNames, paraStyleNames) {
         var doc = app.activeDocument;
         var charStyles = charStyleNames;
         var paraStyles = paraStyleNames;
+
+        // 添加进度条窗口
+        var progressWin = new Window("palette", "正在应用样式...", undefined, {closeButton: false});
+        progressWin.preferredSize = [400, 80];
+        progressWin.progressBar = progressWin.add("progressbar", undefined, 0, textFrames.length);
+        progressWin.progressBar.preferredSize = [380, 24];
+        var progressLabel = progressWin.add("statictext", undefined, "正在处理 0   /" + textFrames.length);
+        progressLabel.preferredSize = [380, 24]; 
+        progressWin.show();
+
         // 遍历文本框
         for (var i = 0; i < textFrames.length; i++) {
             var story = textFrames[i].parentStory;
@@ -591,39 +691,44 @@ function applyStyles(textFrames, config, charStyleNames, paraStyleNames) {
             // 字体-字符样式
             var fontIdx = 0;
             while (config["font_" + fontIdx]) {
-            var fontName = config["font_" + fontIdx];
-            var styleName = config["font_style_" + fontIdx];
-            var cs = getStyleByName(charStyles, styleName);
-            if (cs) {
-                // 如果文本中包含{字体：xxx}，则对整个文本框应用字符样式
-                if (txt.indexOf(fontName) !== -1) {
-                try {
-                    textFrames[i].texts[0].appliedCharacterStyle = cs;
-                } catch (e) {}
+                var fontName = config["font_" + fontIdx];
+                var styleName = config["font_style_" + fontIdx];
+                var cs = getStyleByName(charStyles, styleName);
+                if (cs) {
+                    if (txt.indexOf(fontName) !== -1) {
+                        try {
+                            textFrames[i].parentStory.appliedCharacterStyle = cs;
+                        } catch (e) {}
+                    }
                 }
-            }
-            fontIdx++;
+                fontIdx++;
             }
 
             // 字号-段落样式
             var sizeIdx = 0;
             while (config["size_" + sizeIdx]) {
-            var sizeName = config["size_" + sizeIdx];
-            var styleName = config["size_style_" + sizeIdx];
-            var ps = getStyleByName(paraStyles, styleName);
-            // 若找不到则自动匹配
-            if (!ps) ps = getClosestParaStyle(paraStyles, sizeName);
-            if (ps) {
-                // 如果文本中包含{字号：xxx}，则对整个文本框应用段落样式
-                if (txt.indexOf("{字号：" + sizeName + "}") !== -1) {
-                try {
-                    textFrames[i].texts[0].appliedParagraphStyle = ps;
-                } catch (e) {}
+                var sizeName = config["size_" + sizeIdx];
+                var styleName = config["size_style_" + sizeIdx];
+                var ps = getStyleByName(paraStyles, styleName);
+                // 若找不到则自动匹配
+                if (!ps) ps = getClosestParaStyle(paraStyles, sizeName);
+                if (ps) {
+                    if (txt.indexOf("{字号：" + sizeName + "}") !== -1) {
+                        try {
+                            textFrames[i].parentStory.appliedParagraphStyle = ps;
+                        } catch (e) {}
+                    }
                 }
+                sizeIdx++;
             }
-            sizeIdx++;
-            }
+
+            // 更新进度条
+            progressWin.progressBar.value = i + 1;
+            progressLabel.text = "正在处理 " + (i + 1) + " / " + textFrames.length;
         }
+
+        // 关闭进度条窗口
+        progressWin.close();
     } catch (e) {
         alert("应用样式时发生错误：" + e.message);
     }
@@ -640,9 +745,18 @@ function getStyleByName(styles, name) {
 
 // 获取最接近的段落样式
 function getClosestParaStyle(paraStyles, sizeStr) {
+    var target = parseFloat(sizeStr);
+    if (isNaN(target)) {
+        // 如果sizeStr不是数字，直接匹配第二个默认段落样式
+        for (var i = 0; i < paraStyles.length; i++) {
+            if (paraStyles[i].name == paraStyles[1].name) {
+                return paraStyles[i];
+            }
+        }
+        return null;
+    }
     var minDiff = 99999;
     var best = null;
-    var target = parseFloat(sizeStr);
     for (var i = 0; i < paraStyles.length; i++) {
         var psName = paraStyles[i].name;
         var psNum = parseFloat(psName);

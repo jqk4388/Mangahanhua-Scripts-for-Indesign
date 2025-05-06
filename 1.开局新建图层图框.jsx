@@ -132,6 +132,9 @@ function newtwoboxs() {
                 layer: app.activeDocument.layers.itemByName('Art'),
                 geometricBounds: theMaster.pages[i].bounds,
                 contentType: ContentType.GRAPHIC_TYPE, // make sure to specify that this is a graphic container
+                fillColor: app.activeDocument.swatches.itemByName("None"),
+                strokeColor: app.activeDocument.swatches.itemByName("None"),
+
             });
         //加载了空框架之后设置适合选项
         thisRect.frameFittingOptions.fittingAlignment = AnchorPoint.CENTER_ANCHOR;

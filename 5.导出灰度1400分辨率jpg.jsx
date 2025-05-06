@@ -66,7 +66,7 @@ if (exportCurrentPageOnly) {
 
         var currentTime = new Date().getTime();
         if (currentTime - startTime > maxDuration) {
-            alert("导出时间超过2分钟，操作已停止。");
+            alert("导出时间超过5分钟，操作已停止。");
             break;
         }
 
