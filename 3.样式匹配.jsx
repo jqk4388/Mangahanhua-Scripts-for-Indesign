@@ -1,4 +1,4 @@
-var version = "1.2";
+var version = "1.21";
 
 // 主入口
 function main() {
@@ -591,9 +591,11 @@ function updateUIFromConfig(ui, config) {
         // 先构建ini配置的字体映射
         var iniFontMap = {};
         var i = 0;
-        while (config["font_" + i]) {
-            iniFontMap[config["font_" + i]] = config["font_style_" + i];
-            i++;
+        for (var key in config) {
+            if (key.indexOf("font_") === 0) { // 用 indexOf 判断前缀
+                var index = parseInt(key.split("_")[1], 10); // 提取数字部分
+                iniFontMap[config[key]] = config["font_style_" + index];
+            }
         }
         // 遍历当前面板的行
         for (var idx = 0; idx < ui.leftRows.length; idx++) {
@@ -663,7 +665,7 @@ function updateUIFromConfig(ui, config) {
             j++;
         }
         updateScrollbar(ui.rightListPanel, ui.rightRows, ui.rightbar, 500);
-    } catch (e) {}
+    } catch (e) {$.writeln("更新UI时发生错误：" + e.message);}
 }
 
 // 应用样式
