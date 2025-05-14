@@ -1,4 +1,4 @@
-#include "../../../Library/KTUlib.jsx"
+#include "../Library/KTUlib.jsx"
 
 // stackChars takes a textframe introduces a line break after each character, creating a single
 // vertical column of text.
