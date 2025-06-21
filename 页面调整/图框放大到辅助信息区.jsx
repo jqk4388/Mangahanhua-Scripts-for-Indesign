@@ -10,13 +10,24 @@ var matchSelectionToBleed = function () {
         // 获取文档中所有图框
         for (var i = 0; i < theDoc.allPageItems.length; i++) {
             var item = theDoc.allPageItems[i];
-            if (item.constructor.name === "Rectangle" || item.constructor.name === "Polygon" || item.constructor.name === "Oval") {
+            if (
+                (item.constructor.name === "Rectangle" || item.constructor.name === "Polygon" || item.constructor.name === "Oval") &&
+                !item.locked && // 跳过锁定的图框
+                !item.itemLayer.locked // 跳过锁定图层上的对象
+            ) {
                 frames.push(item);
             }
         }
     } else {
         for (var i = 0; i < app.selection.length; i++) {
-            frames.push(app.selection[i]);
+            var sel = app.selection[i];
+            if (
+                (sel.constructor.name === "Rectangle" || sel.constructor.name === "Polygon" || sel.constructor.name === "Oval") &&
+                !sel.locked &&
+                !sel.itemLayer.locked
+            ) {
+                frames.push(sel);
+            }
         }
     }
     for (var j = 0; j < frames.length; j++) {
@@ -30,13 +41,13 @@ matchSelectionToBleed();
 
 function KTUMatchFrameToInfoArea(theFrame) {
     // set the measurement units to Points, so our math lower down will work out
-    app.scriptPreferences.measurementUnit = MeasurementUnits.POINTS;
+    app.scriptPreferences.measurementUnit = MeasurementUnits.MILLIMETERS;
     // set the ruler to "spread", again so our math works out.
     var oldOrigin = theDoc.viewPreferences.rulerOrigin; // save old ruler origin
     theDoc.viewPreferences.rulerOrigin = RulerOrigin.SPREAD_ORIGIN;
 
     // 假设辅助信息区的线在页面边界外扩一定距离
-    var infoAreaOffset = 28.34; //10mm
+    var infoAreaOffset = 10; //10mm
 
     if (theDoc.documentPreferences.pageBinding == PageBindingOptions.leftToRight) { // LTR
         if (theFrame.parentPage.index % 2 == 0) { // 左页

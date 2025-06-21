@@ -6,6 +6,9 @@ var docName = doc.name.replace(/\.[^\.]+$/, '');
 
 // 设置默认导出文件夹
 var defaultFolder = new Folder("M:/汉化/PS_PNG");
+if (!defaultFolder.exists) {
+    defaultFolder = Folder.desktop;
+}
 var folder = Folder.selectDialog("选择导出文件夹", defaultFolder);
 if (folder == null) {
     alert("未选择导出文件夹，操作取消。");
@@ -58,12 +61,12 @@ progressWin.show();
 
 // 获取开始时间
 var startTime = new Date().getTime();
-var maxDuration = 5 * 60 * 1000; // 5分钟
+var maxDuration = 50 * 60 * 1000; // 50分钟
 
 if (exportCurrentPageOnly) {
     // 只导出当前页面
     var currentPage = app.activeWindow.activePage;
-    var filePath = new File(folder.fsName + "/" + docName + "_" + ("00" + (currentPage.documentOffset + 1)).slice(-3) + ".png");
+    var filePath = new File(folder.fsName + "/" + docName + "_" + page.appliedSection.name + ("00" + (currentPage.documentOffset + 1)).slice(-3) + ".png");
     // 设置导出选项
     app.pngExportPreferences.pngQuality = PNGQualityEnum.MAXIMUM;
     app.pngExportPreferences.exportResolution = exportResolution;
@@ -73,7 +76,7 @@ if (exportCurrentPageOnly) {
     app.pngExportPreferences.simulateOverprint = false;
     app.pngExportPreferences.exportingSpread = false;
     app.pngExportPreferences.pngExportRange = PNGExportRangeEnum.EXPORT_RANGE;
-    app.pngExportPreferences.pageString = currentPage.name;
+    app.pngExportPreferences.pageString = currentPage.appliedSection.name + currentPage.name;
 
     doc.exportFile(ExportFormat.PNG_FORMAT, filePath, false);
     progressWin.progressBar.value = 1;
@@ -88,12 +91,12 @@ if (exportCurrentPageOnly) {
 
         var currentTime = new Date().getTime();
         if (currentTime - startTime > maxDuration) {
-            alert("导出时间超过5分钟，操作已停止。");
+            alert("导出时间超过50分钟，操作已停止。");
             break;
         }
 
         var page = doc.pages[i];
-        var filePath = new File(folder.fsName + "/" + docName + "_" + ("00" + (i + 1)).slice(-3) + ".png");
+        var filePath = new File(folder.fsName + "/" + docName + "_" + page.appliedSection.name + ("00" + (page.name)).slice(-3) + ".png");
         
         // 设置导出选项
         app.pngExportPreferences.pngQuality = PNGQualityEnum.MAXIMUM;
@@ -104,7 +107,7 @@ if (exportCurrentPageOnly) {
         app.pngExportPreferences.simulateOverprint = false;
         app.pngExportPreferences.exportingSpread = false;
         app.pngExportPreferences.pngExportRange = PNGExportRangeEnum.EXPORT_RANGE;
-        app.pngExportPreferences.pageString = page.name;
+        app.pngExportPreferences.pageString = page.appliedSection.name + page.name;
 
         doc.exportFile(ExportFormat.PNG_FORMAT, filePath, false);
         

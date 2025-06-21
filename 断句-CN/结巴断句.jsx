@@ -34,10 +34,10 @@ function main() {
     }
 }
 function DoalltextFrames(textFrames) {
-    // 创建临时文件路径
+    // 创建临时文件路径，兼容macOS和Windows
     var tempFolder = Folder.temp;
-    var inputFile = new File(tempFolder + "/jieba_temp_input.txt");
-    var outputFile = new File(tempFolder + "/jieba_temp_output.txt");
+    var inputFile = new File(tempFolder.fsName + "/jieba_temp_input.txt");
+    var outputFile = new File(tempFolder.fsName + "/jieba_temp_output.txt");
 
     // 打开文件准备写入
     inputFile.encoding = "UTF-8";

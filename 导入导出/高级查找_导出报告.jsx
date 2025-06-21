@@ -37,7 +37,9 @@ if (app.documents.length === 0) {
 
     // 对象类型
     dlg.add("statictext", undefined, "对象类型：");
-    var objectTypeDropdown = dlg.add("dropdownlist", undefined, ["图框", "文本框", "未指定的框架"]);
+    var objectTypeDropdown = dlg.add("dropdownlist", undefined, [
+        "图框", "文本框", "未指定的框架", "矩形", "直线", "多边形", "椭圆", "组", "表格", "按钮", "复合路径", "图像", "QR码", "文本路径", "注释"
+    ]);
     objectTypeDropdown.selection = 0;
 
     // 查找范围
@@ -91,7 +93,19 @@ if (app.documents.length === 0) {
                         if (
                             (objectType === "图框" && item.constructor.name === "Rectangle" && item.graphics.length > 0) ||
                             (objectType === "文本框" && item.constructor.name === "TextFrame") ||
-                            (objectType === "未指定的框架" && item.constructor.name === "Rectangle" && item.graphics.length === 0 && (!("parentStory" in item) || !item.parentStory))
+                            (objectType === "未指定的框架" && item.constructor.name === "Rectangle" && item.graphics.length === 0 && (!("parentStory" in item) || !item.parentStory)) ||
+                            (objectType === "矩形" && item.constructor.name === "Rectangle") ||
+                            (objectType === "直线" && item.constructor.name === "GraphicLine") ||
+                            (objectType === "多边形" && item.constructor.name === "Polygon") ||
+                            (objectType === "椭圆" && item.constructor.name === "Oval") ||
+                            (objectType === "组" && item.constructor.name === "Group") ||
+                            (objectType === "表格" && item.constructor.name === "Table") ||
+                            (objectType === "按钮" && item.constructor.name === "Button") ||
+                            (objectType === "复合路径" && item.constructor.name === "CompoundPath") ||
+                            (objectType === "图像" && item.constructor.name === "Image") ||
+                            (objectType === "QR码" && item.constructor.name === "Rectangle" && item.graphics.length > 0 && item.graphics[0].constructor.name === "QRCode") ||
+                            (objectType === "文本路径" && item.constructor.name === "TextPath") ||
+                            (objectType === "注释" && item.constructor.name === "Note")
                         ) {
                             foundItems.push(item);
                         }
