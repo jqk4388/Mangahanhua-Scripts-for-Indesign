@@ -61,7 +61,19 @@ function DoalltextFrames(textFrames) {
     pythonScript.execute("\"" + inputFile.fsName + "\" \"" + outputFile.fsName + "\"");
 
     // 等待用户确认脚本是否完成
-    var isDone = confirm("请确认Python断句脚本是否已经处理完成，未弹窗请选择No。\n\n点击“Yes”替换断句结果，点击“No”退出。");
+    var w = new Window("dialog", "提示");
+    w.orientation = "column";
+    var msg = w.add("statictext", undefined, "!!!!请等待弹窗!!!!\n未弹窗请选择No。\n\n弹窗后点击“Yes”替换断句结果，点击“No”退出。", {multiline: true});
+    msg.characters = 40;
+    msg.graphics.font = ScriptUI.newFont(msg.graphics.font.name, msg.graphics.font.style, 24); // 放大字号
+    var btnGroup = w.add("group");
+    btnGroup.alignment = "right";
+    var yesBtn = btnGroup.add("button", undefined, "Yes", {name: "ok"});
+    var noBtn = btnGroup.add("button", undefined, "No", {name: "cancel"});
+    var isDone = false;
+    yesBtn.onClick = function() { isDone = true; w.close(); };
+    noBtn.onClick = function() { isDone = false; w.close(); };
+    w.show();
     if (!isDone) {
         // 删除临时文件
         inputFile.remove();

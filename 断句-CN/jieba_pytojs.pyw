@@ -13,6 +13,9 @@ sentence_endings = {"…", "。", "！", "!", "？", "?", "，", "；", "：", "
 # 定义默认文件路径
 default_input_file = os.path.join(os.getenv('LOCALAPPDATA'), 'Temp', 'jieba_temp_input.txt')
 default_output_file = os.path.join(os.getenv('LOCALAPPDATA'), 'Temp', 'jieba_temp_output.txt')
+# 调试用
+# default_input_file = "M:\\汉化\\PS_PNG\\1.txt"
+# default_output_file = "M:\\汉化\\PS_PNG\\1_output.txt"
 
 #词性合并
 def process_sentence(word_list):
@@ -22,6 +25,15 @@ def process_sentence(word_list):
     n = len(word_list)
     while i < n:
         word, pos = word_list[i]
+        
+        # 处理空格，将其转换为断句标识
+        if word.isspace():
+            if units:
+                units[-1] += "\\r"
+            else:
+                units.append("\\r")
+            i += 1
+            continue
 
         # 处理动词+数词+动词结构
         if pos.startswith('v') and i + 2 < n:
@@ -351,6 +363,7 @@ def main():
     
     # 写入输出文件
     with open(output_path, 'w', encoding='utf-8') as f:
+        processed_content = [line.replace('\\r\\r', '\\r') for line in processed_content]
         f.write('\n'.join(processed_content))
     
     # 创建并显示5秒后自动关闭的消息框
