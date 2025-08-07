@@ -35,6 +35,93 @@ if (app.documents.length === 0) {
     var grepInput = grepGroup.add("edittext", undefined, "");
     grepInput.characters = 20;
 
+    // 查找格式分组（仅文本时显示）
+    var formatGroup = dlg.add("panel", undefined, "查找格式");
+    formatGroup.orientation = "column";
+    formatGroup.alignChildren = "left";
+    formatGroup.visible = false;
+
+    var enableFormatCheckbox = formatGroup.add("checkbox", undefined, "启用查找格式");
+    enableFormatCheckbox.value = false;
+
+    // 获取字符样式和段落样式（递归，含分组）
+    var charStyleNames = ["(无)"];
+    var paraStyleNames = ["(无)"];
+    var charStyleObjs = [null];
+    var paraStyleObjs = [null];
+
+    function countCharStyles(styles, groupName) {
+        for (var i = 0; i < styles.length; i++) {
+            if (styles[i].constructor.name === "CharacterStyleGroup") {
+                var gName = styles[i].name;
+                countCharStyles(styles[i].characterStyles, gName);
+                countCharStyles(styles[i].characterStyleGroups, gName);
+            } else if (styles[i].constructor.name === "CharacterStyle") {
+                var name = styles[i].name;
+                var CStyle = styles[i];
+                var group = groupName && groupName !== "" ? groupName : "";
+                if (group !== "") {
+                    name = name + "(" + group + ")";
+                }
+                charStyleNames.push(name);
+                charStyleObjs.push(CStyle);
+            }
+        }
+    }
+    function countParaStyles(styles, groupName) {
+        for (var i = 0; i < styles.length; i++) {
+            if (styles[i].constructor.name === "ParagraphStyleGroup") {
+                var gName = styles[i].name;
+                countParaStyles(styles[i].paragraphStyles, gName);
+                countParaStyles(styles[i].paragraphStyleGroups, gName);
+            } else if (styles[i].constructor.name === "ParagraphStyle") {
+                if (styles[i].name !== "[基本段落]" && styles[i].name !== "[无]") {
+                    var name = styles[i].name;
+                    var PStyle = styles[i];
+                    var group = groupName && groupName !== "" ? groupName : "";
+                    if (group !== "") {
+                        name = name + "(" + group + ")";
+                    }
+                    paraStyleNames.push(name);
+                    paraStyleObjs.push(PStyle);
+                }
+            }
+        }
+    }
+    // 统计组外样式和组内样式
+    countCharStyles(doc.characterStyles, "");
+    countCharStyles(doc.characterStyleGroups, "");
+    countParaStyles(doc.paragraphStyles, "");
+    countParaStyles(doc.paragraphStyleGroups, "");
+
+    var charStyleGroup = formatGroup.add("group");
+    charStyleGroup.add("statictext", undefined, "字符样式：");
+    var charStyleDropdown = charStyleGroup.add("dropdownlist", undefined, charStyleNames);
+    charStyleDropdown.selection = 0;
+    charStyleDropdown.enabled = false;
+
+    var paraStyleGroup = formatGroup.add("group");
+    paraStyleGroup.add("statictext", undefined, "段落样式：");
+    var paraStyleDropdown = paraStyleGroup.add("dropdownlist", undefined, paraStyleNames);
+    paraStyleDropdown.selection = 0;
+    paraStyleDropdown.enabled = false;
+
+    enableFormatCheckbox.onClick = function() {
+        var enabled = enableFormatCheckbox.value;
+        charStyleDropdown.enabled = enabled;
+        paraStyleDropdown.enabled = enabled;
+        foundItems = [];
+        currentIndex = -1;
+    };
+    charStyleDropdown.onChange = function() {
+        foundItems = [];
+        currentIndex = -1;
+    };
+    paraStyleDropdown.onChange = function() {
+        foundItems = [];
+        currentIndex = -1;
+    };
+
     // 对象类型
     dlg.add("statictext", undefined, "对象类型：");
     var objectTypeDropdown = dlg.add("dropdownlist", undefined, [
@@ -45,7 +132,7 @@ if (app.documents.length === 0) {
     // 查找范围
     dlg.add("statictext", undefined, "查找范围：");
     var scopeDropdown = dlg.add("dropdownlist", undefined, ["当前页面", "所有页面"]);
-    scopeDropdown.selection = 0;
+    scopeDropdown.selection = 1;
 
     // 查找方向
     dlg.add("statictext", undefined, "查找方向：");
@@ -72,6 +159,11 @@ if (app.documents.length === 0) {
         var objectType = objectTypeDropdown.selection.text;
         var scope = scopeDropdown.selection.text;
         var grepStr = grepInput.text;
+
+        // 查找格式相关
+        var enableFormat = enableFormatCheckbox.value;
+        var charStyleObj = charStyleDropdown.selection ? charStyleObjs[charStyleDropdown.selection.index] : null;
+        var paraStyleObj = paraStyleDropdown.selection ? paraStyleObjs[paraStyleDropdown.selection.index] : null;
 
         var pages = [];
         var j, p;
@@ -111,7 +203,6 @@ if (app.documents.length === 0) {
                         }
                     } else if (findType === "文本") {
                         if (item.constructor.name === "TextFrame" && item.contents !== "") {
-                            // GREP查找
                             var stories = [item.parentStory];
                             var k;
                             for (k = 0; k < stories.length; k++) {
@@ -120,6 +211,17 @@ if (app.documents.length === 0) {
                                 var origGrepFind = app.findGrepPreferences.properties;
                                 app.findGrepPreferences = NothingEnum.nothing;
                                 app.findGrepPreferences.findWhat = grepStr;
+
+                                // 应用查找格式（用对象）
+                                if (enableFormat) {
+                                    if (charStyleObj) {
+                                        app.findGrepPreferences.appliedCharacterStyle = charStyleObj;
+                                    }
+                                    if (paraStyleObj) {
+                                        app.findGrepPreferences.appliedParagraphStyle = paraStyleObj;
+                                    }
+                                }
+
                                 var results = story.findGrep();
                                 for (var m = 0; m < results.length; m++) {
                                     // 只收集属于当前TextFrame的结果
@@ -207,6 +309,25 @@ if (app.documents.length === 0) {
         var file = new File(filePath);
         file.encoding = "UTF-8";
         file.open("w");
+        file.write("当前文件名：" + doc.name + "\r\n");
+        file.write("查找条件：\r\n");
+        file.write("图层：" + layerDropdown.selection.text + "\r\n");
+        file.write("查找内容：" + findTypeDropdown.selection.text + "\r\n");
+        if (findTypeDropdown.selection.text === "对象") {
+            file.write("对象类型：" + objectTypeDropdown.selection.text + "\r\n");
+        } else {
+            file.write("GREP表达式：" + grepInput.text + "\r\n");
+            if (enableFormatCheckbox.value) {
+                file.write("查找格式：\r\n");
+                file.write("  字符样式：" + charStyleDropdown.selection.text + "\r\n");
+                file.write("  段落样式：" + paraStyleDropdown.selection.text + "\r\n");
+            }
+        }
+        file.write("查找范围：" + scopeDropdown.selection.text + "\r\n");
+        file.write("查找方向：" + directionDropdown.selection.text + "\r\n\r\n");
+        file.write("单页导出用：\r\n");
+        file.write(pageList.join(",")+"\r\n\r\n");
+        file.write("列表：\r\n");
         file.write(pageList.join("\r\n"));
         file.close();
         alert("页面列表已导出到桌面：" + filePath);
@@ -216,11 +337,12 @@ if (app.documents.length === 0) {
         dlg.close();
     };
 
-    // 切换查找内容时，控制对象类型和GREP输入可用性
+    // 切换查找内容时，控制对象类型、GREP输入和查找格式可用性
     findTypeDropdown.onChange = function() {
         var isObj = (findTypeDropdown.selection.text === "对象");
         objectTypeDropdown.enabled = isObj;
         grepGroup.visible = !isObj;
+        formatGroup.visible = !isObj;
         // 选项变更时清空查找并重新查找
         foundItems = [];
         currentIndex = -1;
@@ -228,6 +350,7 @@ if (app.documents.length === 0) {
     };
     objectTypeDropdown.enabled = true;
     grepGroup.visible = false;
+    formatGroup.visible = false;
 
     // 其它下拉列表变更时也清空查找并重新查找
     layerDropdown.onChange = function() {

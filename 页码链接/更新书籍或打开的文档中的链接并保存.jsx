@@ -29,7 +29,7 @@ if (app.books.length === 0) {
     for (i = 0; i < book.bookContents.length; i++) {
         bookContent = book.bookContents[i];
         // 只处理已存在的文档
-        if (bookContent.status === BookContentStatus.INCLUDED) {
+        if (bookContent.status === "INCLUDED") {
             try {
                 doc = app.open(File(bookContent.fullName), false); // 不显示界面
                 // 更新所有链接

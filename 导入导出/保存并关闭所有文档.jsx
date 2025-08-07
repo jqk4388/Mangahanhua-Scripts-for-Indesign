@@ -24,4 +24,4 @@ for (i = docs.length - 1; i >= 0; i--) {
         doc.close();
     }
 }
-alert("所有文档已保存并关闭。");
+// alert("所有文档已保存并关闭。");
