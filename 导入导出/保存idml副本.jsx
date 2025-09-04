@@ -3,6 +3,14 @@
 if (app.documents.length === 0) {
     alert("没有打开的文档。");
 } else {
+    // 获取当前时间并格式化
+    var now = new Date();
+    var timeStr = now.getFullYear().toString() +
+                 ("0" + (now.getMonth() + 1)).slice(-2) +
+                 ("0" + now.getDate()).slice(-2) + "_" +
+                 ("0" + now.getHours()).slice(-2) +
+                 ("0" + now.getMinutes()).slice(-2);
+
     var docs = app.documents;
     for (var i = 0; i < docs.length; i++) {
         var doc = docs[i];
@@ -15,7 +23,7 @@ if (app.documents.length === 0) {
         } else {
             folder = Folder.desktop;
         }
-        var idmlFile = new File(folder + "/" + baseName + ".idml");
+        var idmlFile = new File(folder + "/" + baseName + "_" + timeStr + ".idml");
         doc.exportFile(ExportFormat.INDESIGN_MARKUP, idmlFile);
     }
     alert("所有文档已导出为IDML副本。");

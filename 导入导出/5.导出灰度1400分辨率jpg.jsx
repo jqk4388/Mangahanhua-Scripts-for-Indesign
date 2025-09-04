@@ -84,6 +84,9 @@ app.jpegExportPreferences.jpegExportRange　= ExportRangeOrAllPages.EXPORT_RANGE
 var startTime = new Date().getTime();
 var maxDuration = 15 * 60 * 1000; // 15分钟
 
+// 存储所有缺失链接的信息
+var allMissingLinks = [];
+
 // 检查并刷新页面链接函数
 function checkAndUpdateLinksForPage(page) {
     var pageLinks = [];
@@ -111,8 +114,10 @@ function checkAndUpdateLinksForPage(page) {
         }
     }
     if (missingLinks.length > 0) {
-        alert("页面 " + page.name + " 存在缺失链接，已跳过导出。\n缺失文件:\n" + missingLinks.join("\n"));
-        return false;
+        allMissingLinks.push({
+            page: page.name,
+            links: missingLinks
+        });
     }
     // 刷新未更新的链接
     for (var k = 0; k < outOfDateLinks.length; k++) {
@@ -203,6 +208,16 @@ if (exportMode == "current") {
 
 // 关闭进度条窗口
 progressWin.close();
+
+// 显示所有缺失链接信息
+if (allMissingLinks.length > 0) {
+    var missingLinksMessage = "以下页面存在缺失链接：\n";
+    for (var i = 0; i < allMissingLinks.length; i++) {
+        missingLinksMessage += "页面 " + allMissingLinks[i].page + ":" + 
+                             allMissingLinks[i].links.join("\n") ;
+    }
+    alert(missingLinksMessage);
+}
 
 alert("导出完成！");
 

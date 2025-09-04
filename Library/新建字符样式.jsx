@@ -1,21 +1,92 @@
+var config = {
+    cjkRegex: /[\u4E00-\u9FFF\u3040-\u30FF]/,
+    styleWords: [
+        "Regular", "Bold", "Medium", "Light", "Heavy", "Book", "Thin", "Black", "Italic", "Oblique", "Semibold", "Extrabold", "Ultralight", "Condensed", "Expanded" , "Demi","DemiBold", "Extrabold", "Ultrabold", "Extralight", "Ultralight", "Extra", "Ultra", "Narrow", "Wide","粗体", "细体", "斜体", "半粗体", "半细体", "超细体", "超粗体", "超细体", "超粗体", "超细体" ,"GBK","mono" ,"serif","W3","W5","W7","W9","W11","W12","W13","W14","W15","W16","W17","W18","W19","W20","E","U","H","M","B","D","R","UB","EB","L","EL","T","UL","DB","-"," "
+    ],
+    minFamilyFontCount: 2 // 新建家族组的最小字体数
+};
+var excludeFonts = ["Arial", "Times New Roman"];
+
 /**
  * 获取所有日文/繁体中文/简体中文字体
  * @returns {Array} 字体对象数组
  */
 function getCJKFonts() {
+    // 创建选择对话框
+    var dialog = new Window('dialog', '选择字体范围');
+    var group = dialog.add('group');
+    var allFontsRadio = group.add('radiobutton', undefined, '全部字体');
+    var specificFoundryRadio = group.add('radiobutton', undefined, '指定厂牌');
+    
+    // 添加说明文本
+    var helpText = dialog.add('statictext', undefined, '输入多个厂牌名请用英文逗号分隔，如：方正,汉仪,华康');
+    var foundryInput = dialog.add('edittext', undefined, '');
+    foundryInput.preferredSize.width = 200;
+    foundryInput.enabled = false;
+    
+    // 设置默认选项
+    allFontsRadio.value = true;
+    
+    // 添加确定和取消按钮
+    var buttons = dialog.add('group');
+    buttons.add('button', undefined, '确定', {name: 'ok'});
+    buttons.add('button', undefined, '取消', {name: 'cancel'});
+    
+    // 添加单选按钮切换事件
+    specificFoundryRadio.onClick = function() {
+        foundryInput.enabled = true;
+    }
+    allFontsRadio.onClick = function() {
+        foundryInput.enabled = false;
+    }
+    specificFoundryRadio.onClick = function() {
+        foundryInput.enabled = true;
+        foundryInput.focus(); // 自动聚焦
+    };
+
     var fonts = app.fonts;
     var cjkFonts = [];
-    // 汉字和假名的正则表达式
-    var cjkRegex = /[\u4E00-\u9FFF\u3040-\u30FF]/;
-    for (var i = 0; i < fonts.length; i++) {
-        var font = fonts[i];
-        // 跳过无效字体,当font['postscriptName']有值才继续
-        if (!font['postscriptName']) continue;
-        var fullName = font.fullNameNative;
-        // 排除包含“华文”的字体
-        if (cjkRegex.test(fullName) && fullName.indexOf("华文") === -1) {
-            cjkFonts.push(font);
-            $.writeln(fullName);
+    var cjkRegex = config.cjkRegex;
+    
+    if (dialog.show() == 1) { // 如果用户点击确定
+        for (var i = 0; i < fonts.length; i++) {
+            var font = fonts[i];
+            if (!font['postscriptName']) continue;
+            var fullName = font.fullNameNative;
+            var shouldExclude = false;
+            for (var j = 0; j < excludeFonts.length; j++) {
+                if (fullName.indexOf(excludeFonts[j]) !== -1) {
+                    shouldExclude = true;
+                    break;
+                }
+            }
+            if (shouldExclude) continue;
+            if (!fullName || !cjkRegex.test(fullName)) continue;
+
+            if (cjkRegex.test(fullName)) {
+                // 如果选择指定厂牌且输入了厂牌名
+                if (specificFoundryRadio.value && foundryInput.text) {
+                    var inputFoundries = foundryInput.text.split(',');
+                    for (var j = 0; j < inputFoundries.length; j++) {
+                        inputFoundries[j] = inputFoundries[j].replace(/^\s+|\s+$/g, '');
+                    }
+                    var foundry = getFontFoundry(fullName);
+                    var foundryMatched = false;
+                    for (var k = 0; k < inputFoundries.length; k++) {
+                        if (inputFoundries[k] == foundry) {
+                            foundryMatched = true;
+                            break;
+                        }
+                    }
+                    if (foundryMatched) {
+                        cjkFonts.push(font);
+                        // $.writeln(fullName);
+                    }
+                } else {
+                    cjkFonts.push(font);
+                    // $.writeln(fullName);
+                }
+            }
         }
     }
     return cjkFonts;
@@ -28,15 +99,11 @@ function getCJKFonts() {
  */
 function groupFontsByFoundryAndFamily(fonts) {
     var groups = {};
-    // 常见风格词列表
-    var styleWords = [
-        "Regular", "Bold", "Medium", "Light", "Heavy", "Book", "Thin", "Black", "Italic", "Oblique", "Semibold", "Extrabold", "Ultralight", "Condensed", "Expanded" , "Demi","DemiBold", "Extrabold", "Ultrabold", "Extralight", "Ultralight", "Extra", "Ultra", "Narrow", "Wide", "Narrow", "Wide", "Narrow", "Wide", "Narrow", "Wide", "Narrow", "Wide", "Narrow", "Wide", "Narrow", "Wide", "Narrow", "Wide", "Narrow", "Wide", "Narrow", "Wide", "粗体", "细体", "斜体", "半粗体", "半细体", "超细体", "超粗体", "超细体", "超粗体", "超细体" ,"GBK","mono" ,"serif","W3","W5","W7","W9","W11","W12","W13","W14","W15","W16","W17","W18","W19","W20","E","U","H","M","B","D","R","UB","EB","L","EL","T","UL","DB","-"," "
-    ];
     for (var i = 0; i < fonts.length; i++) {
         var font = fonts[i];
-        var name = font.fullNameNative;
-        var foundry = name.substr(0, 2);
-        var rest = name.substr(2);
+        var name = processNameBrackets(font.fullNameNative);
+        var foundry = getFontFoundry(name);
+        var rest = name.substr(foundry.length);
         var family = "";
         // 去除前导空格
         while (rest.length > 0 && rest[0] === " ") {
@@ -44,8 +111,8 @@ function groupFontsByFoundryAndFamily(fonts) {
         }
         // 截取到第一个空格或风格词前
         var splitIndex = rest.length;
-        for (var j = 0; j < styleWords.length; j++) {
-            var idx = rest.indexOf(styleWords[j]);
+        for (var j = 0; j < config.styleWords.length; j++) {
+            var idx = rest.indexOf(config.styleWords[j]);
             if (idx !== -1 && idx < splitIndex) {
                 splitIndex = idx;
             }
@@ -70,14 +137,18 @@ function groupFontsByFoundryAndFamily(fonts) {
 
 /**
  * 获取字体厂牌名
+ * - 如果字体名包含“工具箱”，则厂牌是“工具箱”
  * - 如果第一个字符是中文，取前两个字符
  * - 如果第一个字符是英文，取第一个单词
  * @param {Font} font 字体对象
  * @returns {String} 厂牌名
  */
-function getFontFoundry(font) {
-    var name = font.name;
+function getFontFoundry(name) {
     if (!name || name.length === 0) return "";
+    // 特殊情况：包含“工具箱”
+    if (name.indexOf("工具箱") !== -1) {
+        return "工具箱";
+    }
     var firstChar = name[0];
     // 判断是否为中文字符
     if (/[\u4e00-\u9fa5]/.test(firstChar)) {
@@ -101,28 +172,12 @@ function getFontWeight(font) {
 }
 
 /**
- * 新建字符样式
- * @param {Document} doc 当前文档
- * @param {String} styleName 样式名
- * @param {Font} font 字体对象
- * @param {Object} parentGroup 父组（可选）
+ * 处理名称中的英文括号
+ * @param {String} name 原始名称
+ * @returns {String} 处理后的名称
  */
-function createCharacterStyle(doc, styleName, font, parentGroup) {
-    try {
-        var baseStyle = doc.characterStyles.itemByName("[无]");
-        var newStyle;
-        if (parentGroup) {
-            newStyle = parentGroup.characterStyles.add({ name: styleName, basedOn: baseStyle });
-            $.writeln("新建样式成功：" + styleName + " 在组 " + parentGroup.name);
-        } else {
-            newStyle = doc.characterStyles.add({ name: styleName, basedOn: baseStyle });
-            $.writeln("新建样式成功："+ styleName);
-        }
-        newStyle.appliedFont = font;
-        newStyle.fontStyle = getFontWeight(font);
-    } catch (e) {
-        // 样式已存在或其他错误，忽略
-    }
+function processNameBrackets(name) {
+    return name.replace(/^\s+/, '').replace(/[\[\]()（）「」『』"']/g, '');
 }
 
 /**
@@ -133,10 +188,37 @@ function createCharacterStyle(doc, styleName, font, parentGroup) {
  */
 function createCharacterStyleGroup(doc, groupName) {
     try {
-        return doc.characterStyleGroups.add({ name: groupName });        
+        var processedName = processNameBrackets(groupName);
+        return doc.characterStyleGroups.add({ name: processedName });        
     } catch (e) {
         // 组已存在或其他错误，返回已存在的组
-        return doc.characterStyleGroups.itemByName(groupName);
+        return doc.characterStyleGroups.itemByName(processedName);
+    }
+}
+
+/**
+ * 新建字符样式
+ * @param {Document} doc 当前文档
+ * @param {String} styleName 样式名
+ * @param {Font} font 字体对象
+ * @param {Object} parentGroup 父组（可选）
+ */
+function createCharacterStyle(doc, styleName, font, parentGroup) {
+    try {
+        var processedName = processNameBrackets(styleName);
+        var baseStyle = doc.characterStyles.itemByName("[无]");
+        var newStyle;
+        if (parentGroup) {
+            newStyle = parentGroup.characterStyles.add({ name: processedName, basedOn: baseStyle });
+            $.writeln("新建样式成功：" + processedName + " 在组 " + parentGroup.name);
+        } else {
+            newStyle = doc.characterStyles.add({ name: processedName, basedOn: baseStyle });
+            $.writeln("新建样式成功："+ processedName);
+        }
+        newStyle.appliedFont = font;
+        newStyle.fontStyle = getFontWeight(font);
+    } catch (e) {
+        // 样式已存在或其他错误，忽略
     }
 }
 
@@ -167,8 +249,7 @@ function main() {
         $.writeln("新建厂牌组：" + foundry);
         for (var family in fontGroups[foundry]) {
             var fonts = fontGroups[foundry][family];
-            // 家族字体数量大于2才新建家族组，否则直接放厂牌组下
-            if (family !== "__nofamily__" && fonts.length > 2) {
+            if (family !== "__nofamily__" && fonts.length > config.minFamilyFontCount) {
                 var familyGroup = createCharacterStyleGroup(foundryGroup, family);
                 $.writeln("  新建家族组：" + family);
                 for (var i = 0; i < fonts.length; i++) {

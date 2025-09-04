@@ -14,8 +14,8 @@ sentence_endings = {"…", "。", "！", "!", "？", "?", "，", "；", "：", "
 default_input_file = os.path.join(os.getenv('LOCALAPPDATA'), 'Temp', 'jieba_temp_input.txt')
 default_output_file = os.path.join(os.getenv('LOCALAPPDATA'), 'Temp', 'jieba_temp_output.txt')
 # 调试用
-# default_input_file = "M:\\汉化\\PS_PNG\\1.txt"
-# default_output_file = "M:\\汉化\\PS_PNG\\1_output.txt"
+# default_input_file = "M:\\汉化\\PS_PNG\\断句测试.txt"
+# default_output_file = "M:\\汉化\\PS_PNG\\断句测试_jieba_output.txt"
 
 #词性合并
 def process_sentence(word_list):

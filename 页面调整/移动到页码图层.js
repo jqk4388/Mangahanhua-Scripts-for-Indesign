@@ -4,10 +4,10 @@ var doc = app.activeDocument;
 // Check if the "页码" layer exists, if not create a new layer named "Pages"
 var targetLayer;
 try {
-    targetLayer = doc.layers.itemByName("页码");
+    targetLayer = doc.layers.itemByName("Page Numbers");
     targetLayer.name; // This will throw an error if the layer does not exist
 } catch (e) {
-    targetLayer = doc.layers.add({ name: "Pages" });
+    targetLayer = doc.layers.add({ name: "Page Numbers" });
 }
 
 // Move the selected text frames to the target layer

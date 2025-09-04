@@ -100,7 +100,8 @@ do
         app.selection[0] instanceof Text ||
         app.selection[0] instanceof Word ||
         app.selection[0] instanceof Character ||
-        app.selection[0] instanceof Paragraph
+        app.selection[0] instanceof Paragraph ||
+        app.selection[0] instanceof TextStyleRange
     ))
     {
         error = kErr_NoSelection;
