@@ -144,12 +144,14 @@ if (app.documents.length === 0) {
     btnGroup.orientation = "row";
     var findBtn = btnGroup.add("button", undefined, "查找下一个");
     var exportBtn = btnGroup.add("button", undefined, "导出页面列表");
+    var highlightBtn = btnGroup.add("button", undefined, "突出显示");
     var closeBtn = btnGroup.add("button", undefined, "关闭");
 
     // 变量保存查找结果
     var foundItems = [];
     var currentIndex = -1;
-
+    var highlightApplied = false;
+    
     // 查找函数
     function doSearch() {
         foundItems = [];
@@ -333,6 +335,72 @@ if (app.documents.length === 0) {
         alert("页面列表已导出到桌面：" + filePath);
     };
 
+    // 突出显示按钮：使用条件文本（Condition）来标记/取消标记找到的文本
+    highlightBtn.onClick = function() {
+        if (foundItems.length === 0) {
+            doSearch();
+            if (foundItems.length === 0) {
+                alert("未找到匹配项，无法高亮。");
+                return;
+            }
+        }
+        var csName = "高级查找";
+        var condName = "高亮查找";
+        var cs;
+        var cond;
+        // 获取或创建条件集
+        try {
+            cs = doc.conditionSets.item(csName);
+            cs.name; // 触发异常以检测是否存在
+        } catch (e) {
+            cs = doc.conditionSets.add();
+            cs.name = csName;
+            doc.conditionalTextPreferences.showConditionIndicators = ConditionIndicatorMode.SHOW_INDICATORS;
+            doc.conditionalTextPreferences.activeConditionSet = cs;
+        }
+        // 获取或创建条件
+        try {
+            cond = doc.conditions.item(condName);
+            cond.name;
+        } catch (e) {
+            cond = doc.conditions.add();
+            cond.name = condName;
+            cond.indicatorMethod = ConditionIndicatorMethod.USE_HIGHLIGHT
+            cond.indicatorColor = UIColors.GOLD;
+            cond.visible = true;
+        }
+
+        if (!highlightApplied) {
+            // 应用条件到所有找到的项
+            for (var i = 0; i < foundItems.length; i++) {
+                var it = foundItems[i];
+                try {
+                    if (it.appliedConditions) {
+                        it.applyConditions([cond], true);
+                    }
+                } catch (e) {
+                    // 忽略单项应用错误
+                }
+            }
+            highlightApplied = true;
+            highlightBtn.text = "取消高亮";
+        } else {
+            // 移除条件
+            for (var i = 0; i < foundItems.length; i++) {
+                var it = foundItems[i];
+                try {
+                    if (it.appliedConditions) {
+                        it.applyConditions([], true);
+                    }
+                } catch (e) {
+                    // 忽略单项移除错误
+                }
+            }
+            highlightApplied = false;
+            highlightBtn.text = "突出显示";
+        }
+    };
+
     closeBtn.onClick = function() {
         dlg.close();
     };
@@ -385,9 +453,9 @@ if (app.documents.length === 0) {
     dlg.show();
 
     // 添加一个全局的事件监听器，防止对话框意外关闭
-    app.addEventListener(EventType.CLOSE, function (event) {
-        if (event.target === dlg) {
-            event.preventDefault();
-        }
-    });
+    // app.addEventListener(EventType.CLOSE, function (event) {
+    //     if (event.target === dlg) {
+    //         event.preventDefault();
+    //     }
+    // });
 }
