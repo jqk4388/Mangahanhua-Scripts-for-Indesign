@@ -1,0 +1,306 @@
+// 主函数
+function convertBitmapToGrayscale() {
+    var doc = app.activeDocument;
+    var selectionType = getUserSelection();
+    
+    if (selectionType == null) {
+        return; // 用户取消操作
+    }
+    
+    var links = getLinksToProcess(doc, selectionType);
+    
+    if (links.length == 0) {
+        alert("没有找到符合条件的链接图片");
+        return;
+    }
+    
+    processLinks(links);
+}
+
+// 获取用户选择的处理范围
+function getUserSelection() {
+    var dialog = new Window("dialog", "选择处理范围");
+    dialog.orientation = "column";
+    dialog.alignChildren = "left";
+    
+    var text = dialog.add("statictext", undefined, "请选择处理范围:");
+    
+    var rg = dialog.add("group");
+    rg.orientation = "row";
+    var currentPageRadio = rg.add("radiobutton", undefined, "仅当前页面");
+    var allDocumentRadio = rg.add("radiobutton", undefined, "整个文档");
+    currentPageRadio.value = true;
+    
+    var buttonGroup = dialog.add("group");
+    buttonGroup.orientation = "row";
+    buttonGroup.alignment = "center";
+    var okBtn = buttonGroup.add("button", undefined, "确定");
+    var cancelBtn = buttonGroup.add("button", undefined, "取消");
+    
+    var result = null;
+    
+    okBtn.onClick = function() {
+        result = currentPageRadio.value ? "current" : "document";
+        dialog.close();
+    };
+    
+    cancelBtn.onClick = function() {
+        result = null;
+        dialog.close();
+    };
+    
+    dialog.show();
+    
+    return result;
+}
+
+// 获取需要处理的链接
+function getLinksToProcess(doc, selectionType) {
+    var links = [];
+    
+    if (selectionType == "current") {
+        // 处理当前页面
+        var page = doc.layoutWindows[0].activePage;
+        var pageItems = page.allPageItems;
+        
+        for (var i = 0; i < pageItems.length; i++) {
+            if (pageItems[i].hasOwnProperty("images") && pageItems[i].images.length > 0) {
+                var image = pageItems[i].images[0];
+                if (image.hasOwnProperty("itemLink") && isSupportedImage(image.itemLink)) {
+                    links.push(image.itemLink);
+                }
+            }
+        }
+    } else {
+        // 处理整个文档
+        var allLinks = doc.links;
+        for (var i = 0; i < allLinks.length; i++) {
+            if (isSupportedImage(allLinks[i])) {
+                links.push(allLinks[i]);
+            }
+        }
+    }
+    
+    return links;
+}
+
+// 检查是否为支持的图片格式
+function isSupportedImage(link) {
+    if (!link) return false;
+    
+    var filePath = link.filePath;
+    if (!filePath) return false;
+    
+    filePath = filePath.toLowerCase();
+    
+    // 检查是否为psd或tif格式
+    if (filePath.substr(-4) == ".psd" || filePath.substr(-4) == ".tif" || 
+        filePath.substr(-5) == ".tiff") {
+        return true;
+    }
+    
+    return false;
+}
+
+// 处理链接图片
+function processLinks(links) {
+    // 创建进度条窗口
+    var progressWindow = new Window("palette", "处理进度");
+    progressWindow.orientation = "column";
+    progressWindow.alignChildren = "left";
+    
+    var progressText = progressWindow.add("statictext", undefined, "正在处理图片...");
+    progressText.preferredSize.width = 300;
+    
+    var progressBar = progressWindow.add("progressbar", undefined, 0, links.length);
+    progressBar.preferredSize.width = 300;
+    
+    var progressInfo = progressWindow.add("statictext", undefined, "0 / " + links.length);
+    progressInfo.preferredSize.width = 300;
+    
+    var cancelButton = progressWindow.add("button", undefined, "取消");
+    
+    var cancelled = false;
+    cancelButton.onClick = function() {
+        cancelled = true;
+    };
+    
+    progressWindow.show();
+    
+    var processedCount = 0;
+    
+    for (var i = 0; i < links.length; i++) {
+        // 更新进度条
+        progressBar.value = i;
+        progressInfo.text = (i + 1) + " / " + links.length;
+        progressWindow.update();
+        
+        // 检查是否取消
+        if (cancelled) {
+            break;
+        }
+        
+        if (processSingleLink(links[i])) {
+            processedCount++;
+        }
+        
+        // 处理事件队列，保持界面响应
+        app.scriptPreferences.enableRedraw = true;
+    }
+    
+    // 关闭进度条窗口
+    progressWindow.close();
+    
+    if (cancelled) {
+        alert("用户取消操作。已完成 " + processedCount + " 个文件的处理。");
+    } else {
+        alert("处理完成！共处理了 " + processedCount + " 个文件。");
+    }
+}
+
+// 处理单个链接
+function processSingleLink(link) {
+    try {
+        var originalPath = link.filePath;
+        if (!originalPath) return false;
+        
+        // 首先在InDesign中检查图片是否为位图模式
+        if (!isBitmapImage(link)) {
+            // 如果不是位图，直接返回true表示处理完成（无需处理）
+            return true;
+        }
+        
+        // 通过BridgeTalk调用Photoshop处理图片
+        if (processImageInPhotoshop(originalPath)) {
+            // 更新InDesign中的链接
+            var newPath = originalPath.toLowerCase().substr(-4) == ".psd" ? 
+                          originalPath : 
+                          originalPath.replace(/\.(tif|tiff)$/i, ".psd");
+            
+            // 等待文件系统更新
+            sleepWithEvents(2000);
+            
+            // 更新链接
+            try {
+                link.relink(new File(newPath));
+                link.update();
+                return true;
+            } catch (e) {
+                // 如果更新失败，可能是文件还在被占用，再等待一下
+                sleepWithEvents(3000);
+                try {
+                    link.relink(new File(newPath));
+                    link.update();
+                    return true;
+                } catch (e2) {
+                    $.writeln("更新链接失败: " + e2.message);
+                    return false;
+                }
+            }
+        }
+    } catch (e) {
+        $.writeln("处理链接时出错: " + e.message);
+        return false;
+    }
+    
+    return false;
+}
+
+// 检查图片是否为位图模式
+function isBitmapImage(link) {
+    try {
+        // 获取链接对应的图片对象
+        var image = link.parent;
+        if (image && image.hasOwnProperty('imageTypeName')) {
+            // 如果能直接获取到imageTypeName，可以检查是否为Bitmap
+            // 注意：这可能需要根据实际API调整
+            return image['space'] == "Bitmap"||image['space'] == "黑白";
+        }
+        // 如果无法直接判断，返回true以保持原有逻辑
+        return true;
+    } catch (e) {
+        $.writeln("检查图片模式时出错: " + e.message);
+        // 出错时返回true，保持原有逻辑
+        return true;
+    }
+}
+
+// 在Photoshop中处理图片
+function processImageInPhotoshop(imagePath) {
+    try {
+        if (!BridgeTalk.isRunning("photoshop")) {
+            alert("请先启动Photoshop");
+            return false;
+        }
+        
+        var bt = new BridgeTalk();
+        bt.target = "photoshop";
+        
+        var psScript = 
+            "var fileRef = new File('" + imagePath.replace(/'/g, "\\'") + "');\n" +
+            "if (fileRef.exists) {\n" +
+            "    var doc = app.open(fileRef);\n" +
+            "    if (doc.mode == DocumentMode.BITMAP) {\n" +
+            "        doc.changeMode(ChangeMode.GRAYSCALE);\n" +
+            "        var saveFile = new File('" + getSavePath(imagePath).replace(/'/g, "\\'") + "');\n" +
+            "        var psdSaveOptions = new PhotoshopSaveOptions();\n" +
+            "        psdSaveOptions.embedColorProfile = true;\n" +
+            "        psdSaveOptions.alphaChannels = true;\n" +
+            "        psdSaveOptions.layers = true;\n" +
+            "        doc.saveAs(saveFile, psdSaveOptions, true, Extension.LOWERCASE);\n" +
+            "        doc.close(SaveOptions.DONOTSAVECHANGES);\n" +
+            "        true;\n" +
+            "    } else {\n" +
+            "        doc.close(SaveOptions.DONOTSAVECHANGES);\n" +
+            "        true;\n" +
+            "    }\n" +
+            "} else {\n" +
+            "    false;\n" +
+            "}";
+        
+        bt.body = psScript;
+        
+        var result = false;
+        bt.onResult = function(resObj) {
+            result = resObj.body == "true";
+        };
+        
+        bt.onError = function(errObj) {
+            result = false;
+        };
+        
+        bt.send();
+        
+        sleepWithEvents(3000);
+        
+        return result;
+    } catch (e) {
+        $.writeln("调用Photoshop处理图片时出错: " + e.message);
+        return false;
+    }
+}
+
+// 获取保存路径
+function getSavePath(originalPath) {
+    var path = originalPath.toLowerCase();
+    if (path.substr(-4) == ".psd") {
+        return originalPath;
+    } else if (path.substr(-4) == ".tif" || path.substr(-5) == ".tiff") {
+        return originalPath.replace(/\.(tif|tiff)$/i, ".psd");
+    }
+    return originalPath;
+}
+
+// 带事件处理的延迟函数
+function sleepWithEvents(milliseconds) {
+    var start = new Date().getTime();
+    var now = start;
+    while (now - start < milliseconds) {
+        // 处理事件队列，保持界面响应
+        app.scriptPreferences.enableRedraw = true;
+        now = new Date().getTime();
+    }
+}
+
+// 执行主函数
+convertBitmapToGrayscale();
