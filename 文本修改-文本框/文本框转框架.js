@@ -14,7 +14,7 @@ function main() {
     }
 
     // 修改：传递当前页面参数
-    var polygonFrame = createPolygonFrame(selectedFrames[0], activePage);
+    var polygonFrame = createPolygonFrame(selectedFrames, activePage);
     cutSelectedFrames(selectedFrames);
     pasteContentIntoFrame(polygonFrame);
 }
@@ -49,9 +49,16 @@ function cutSelectedFrames(textFrames) {
 }
 
 // 新建一个多边形框架
-function createPolygonFrame(referenceFrame, activePage) {
+function createPolygonFrame(referenceFrames, activePage) {
     var doc = app.activeDocument;
-    var bounds = referenceFrame.geometricBounds;
+    
+    // 如果是多个框架，计算整体边界
+    var bounds;
+    if (referenceFrames.length > 1) {
+        bounds = getGroupBounds(referenceFrames);
+    } else {
+        bounds = referenceFrames[0].geometricBounds;
+    }
     
     // 确保在当前页面创建
     var polygon = activePage.polygons.add({
@@ -65,10 +72,30 @@ function createPolygonFrame(referenceFrame, activePage) {
     return polygon;
 }
 
+// 新增：计算多个框架的整体边界
+function getGroupBounds(frames) {
+    if (frames.length === 0) return [0, 0, 0, 0];
+    
+    var minX = frames[0].geometricBounds[1];
+    var minY = frames[0].geometricBounds[0];
+    var maxX = frames[0].geometricBounds[3];
+    var maxY = frames[0].geometricBounds[2];
+    
+    for (var i = 1; i < frames.length; i++) {
+        var bounds = frames[i].geometricBounds;
+        minX = Math.min(minX, bounds[1]);
+        minY = Math.min(minY, bounds[0]);
+        maxX = Math.max(maxX, bounds[3]);
+        maxY = Math.max(maxY, bounds[2]);
+    }
+    
+    return [minY, minX, maxY, maxX];
+}
+
 // 将剪切的内容粘贴到指定框架内
 function pasteContentIntoFrame(targetFrame) {
-    app.select(targetFrame)
-    alert("已经创立新框架，请按Ctrl+Alt+V贴入内部！");
+    app.select(targetFrame);
+    app.pasteInto (targetFrame);
 }
 
 // 运行主函数
