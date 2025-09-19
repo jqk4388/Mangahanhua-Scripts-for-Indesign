@@ -190,7 +190,7 @@ var TextFitter = {
     // 获取字体大小
     getFontSize: function(textFrame) {
         try {
-            return textFrame.texts[0].pointSize;
+            return textFrame['parentStory']['pointSize'];
         } catch (e) {
             return 12; // 默认值
         }
@@ -199,7 +199,7 @@ var TextFitter = {
     // 获取行距
     getLeading: function(textFrame) {
         try {
-            var leading = textFrame.texts[0].leading;
+            var leading = textFrame['parentStory']['leading'];
             return (leading == Leading.AUTO) ? this.getFontSize(textFrame) * 1.2 : leading;
         } catch (e) {
             return this.getFontSize(textFrame) * 1.2; // 默认值
@@ -209,7 +209,7 @@ var TextFitter = {
     // 获取字间距
     getTracking: function(textFrame) {
         try {
-            return textFrame.texts[0].tracking;
+            return textFrame['parentStory']['tracking'];
         } catch (e) {
             return 0; // 默认值
         }
@@ -319,6 +319,7 @@ var TextFitter = {
             // 如果需要放大文本，从当前大小到最大值之间查找
             low = currentFontSize;
             high = maxSize;
+            this.applyLeading(textFrame, Leading.AUTO); 
         }
         
         // 二分法查找最佳字体大小
@@ -405,7 +406,7 @@ var TextFitter = {
     // 应用行间距
     applyLeading: function(textFrame, leading) {
         try {
-            textFrame.texts[0].leading = leading;
+            textFrame['parentStory']['leading'] = leading;
         } catch (e) {
             // 忽略错误
         }
