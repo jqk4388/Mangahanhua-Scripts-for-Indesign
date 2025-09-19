@@ -285,7 +285,7 @@ function insertTextOnPageByTxtEntry(entry) {
     textFrame_y = 25;
     textFrame.geometricBounds = [coordinates[1], coordinates[0]-textFrame_x/2, coordinates[1] + textFrame_y, coordinates[0] + textFrame_x];
     textFrame.contents = entry.text;
-    // textFrame.parentStory.storyPreferences.storyOrientation = StoryHorizontalOrVertical["VERTICAL"];
+    textFrame.parentStory.storyPreferences.storyOrientation = StoryHorizontalOrVertical.VERTICAL;
 
 
     // 根据分组应用样式
