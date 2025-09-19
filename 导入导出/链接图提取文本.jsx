@@ -252,7 +252,7 @@ function extractTextWithPhotoshop(imageFile, outputFile) {
                                 var bounds = subLayer.bounds;
                                 var info = {
                                     ame: subLayer.name,
-                                    co: textItem.contents,
+                                    co: textItem.contents.replace(/[\r\n]/g, ""), // 移除换行符,
                                     le: bounds[0] / doc.width,
                                     op: bounds[1] / doc.height,
                                     ig: bounds[2] / doc.width,
@@ -330,9 +330,6 @@ function createTextFramesFromOutput(doc, outputFile, image) {
     if (typeof str !== 'string') {
         str = String(str);
     }
-    
-    // 正则匹配开头和结尾的空白字符（空格、制表符、换行符等）
-    // \s 等价于 [ \t\n\r\f]，覆盖所有常见空白字符
     return str.replace(/^\s+/, '').replace(/\s+$/, '');
 }
     // 为每个文本条目创建文本框
@@ -340,7 +337,9 @@ function createTextFramesFromOutput(doc, outputFile, image) {
         if (trim(lines[i]) === "") continue;
         
         try {
-            var textInfo = eval("(" + lines[i] + ")"); // 使用eval解析JSON（因为是ES3环境）
+            //去掉换行符，eval中不能换行
+            var line = lines[i].replace(/\n/g, "\\r");
+            var textInfo = eval("(" + line + ")"); // 使用eval解析JSON（因为是ES3环境）
             
             // 计算文本框位置（相对于页面位置）
             var left = textInfo.le * imageWidth;
