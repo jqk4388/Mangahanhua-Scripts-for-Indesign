@@ -1,8 +1,8 @@
 // LP翻译稿处理工具
 // 该脚本用于处理LP翻译稿，将文本插入到InDesign文档中，并根据分组应用样式
 // 作者：几千块
-// 日期：20250505
-var version = "2.1";
+// 日期：20250920
+var version = "2.2";
 // 声明全局变量
 var totalPages = 0;
 var doc = app.activeDocument;
@@ -286,6 +286,9 @@ function insertTextOnPageByTxtEntry(entry) {
     textFrame.geometricBounds = [coordinates[1], coordinates[0]-textFrame_x/2, coordinates[1] + textFrame_y, coordinates[0] + textFrame_x];
     textFrame.contents = entry.text;
     textFrame.parentStory.storyPreferences.storyOrientation = StoryHorizontalOrVertical.VERTICAL;
+    if (textFrame.overflows) {
+        textFrame.fit(FitOptions.FRAME_TO_CONTENT);
+    }
 
 
     // 根据分组应用样式
