@@ -1,9 +1,11 @@
 // Adobe InDesign Script: 自动拼音脚本
 // 主要功能：为选中文本框中的括号内容添加拼音注音
 // 作者：几千块
-// 日期：2025年5月03日
-// 版本：1.1
+// 日期：2025年9月22日
+// 版本：1.2
 
+QUOTES_star = "\uFF08"; //  （）全形圆括号
+QUOTES_end = "\uFF09"; // 
 // 主函数
 main();
 
@@ -16,7 +18,7 @@ function main() {
 
     // 获取当前选中对象
     var selection = app.selection;
-    if (selection.length === 0 || !(selection[0].constructor.name === "TextFrame")) {
+    if (selection.length === 0) {
         alert("请先选择文本框！");
         return;
     }
@@ -25,15 +27,34 @@ function main() {
         // 处理每个选中的文本框
         for (var i = 0; i < selection.length; i++) {
             if (selection[i].constructor.name === "TextFrame") {
-                processTextFrame(selection[i]);
+                processTextFrame(selection[i],0);
+            }else if (selection[i].constructor.name === "Text" || selection[i].constructor.name === "TextStyleRange"|| selection[i].constructor.name === "Character")  {
+                inputRubyChars = processText(selection[i]);
+                var textFrame = selection[i]['parentTextFrames'][0];
+                processTextFrame(textFrame,inputRubyChars);
             }
         }
     } catch (e) {
         alert("发生错误：" + e);
     }
 }
+function processText(text) {
+    try {
+        //弹出一个对话框让用户输入文字
+        var rubyText = prompt("请输入拼音内容：", "");
+        if (rubyText === null) {
+            return;
+        }
+        var rubyContents = QUOTES_star + rubyText + QUOTES_end;
+        text.contents = text.contents + rubyContents;
+        var inputRubyChars = text.length; 
+        return inputRubyChars;
+    } catch (error) {
+        alert("发生错误：" + error.message);
+    }
+}
 
-function processTextFrame(textFrame) {
+function processTextFrame(textFrame,inputRubyChars) {
     var content = textFrame['parentStory']['contents'];
     var lines = content.split(/\r|\n/);
     var globalBracketsPositions = [];
@@ -69,7 +90,7 @@ function processTextFrame(textFrame) {
                 var quoteInnerStart = quoteResult.innerStart;
                 var quotePairFound = quoteResult.pairFound;
 
-                var defaultChars, maxChars, startPos;
+                var defaultChars,maxChars, startPos;
                 if (quotePairFound && quoteInner.length > 0) {
                     defaultChars = maxChars = quoteInner.length;
                     startPos = quoteInnerStart;
@@ -120,13 +141,17 @@ function processTextFrame(textFrame) {
                     defaultChars = maxChars = targetText.length;
                     prevLineRuby = 1;
                 }
-                var userInput = showRubyDialog(
-                    quoteInner.length > 0 ? quoteInner : targetText,
-                    rubyText,
-                    prevLine,
-                    defaultChars,
-                    maxChars
-                );
+                if (inputRubyChars ==0 ) {
+                    var userInput = showRubyDialog(
+                        quoteInner.length > 0 ? quoteInner : targetText,
+                        rubyText,
+                        prevLine,
+                        defaultChars,
+                        maxChars
+                    );
+                } else {
+                    var userInput = inputRubyChars;
+                }
 
                 if (userInput === null) {
                     return; // 用户取消操作
@@ -188,7 +213,9 @@ function processTextFrame(textFrame) {
     }
 
     removeBracketsWithFindReplace(textFrame, globalBracketsPositions);
-    textFrame.fit(FitOptions.FRAME_TO_CONTENT);
+    if (textFrame.overflows) {
+        textFrame.fit(FitOptions.FRAME_TO_CONTENT);
+    }
 }
 
 function findBrackets(text) {

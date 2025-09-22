@@ -3,7 +3,7 @@
 // 作者：几千块
 // 日期：2025年9月22日
 // 版本：1.2
-// 加点位置右上
+// 加点位置左下
 
 QUOTES_star = "\u3010"; //  【
 QUOTES_end = "\u3011"; // 】
@@ -124,7 +124,7 @@ function addEmphasis(textFrame, startIndex, endIndex) {
         for (var i = startIndex; i <= endIndex; i++) {
             var character = textFrame.characters[i];
             character.kentenKind = KentenCharacter.KENTEN_SMALL_BLACK_CIRCLE;
-            character.kentenPosition = RubyKentenPosition.ABOVE_RIGHT; // 位置：右上
+            character.kentenPosition = RubyKentenPosition.BELOW_LEFT; // 位置：左下
         }
     } catch (error) {
         alert("添加着重号时发生错误：" + error.message);
@@ -146,8 +146,8 @@ function adjustLeading(textFrame, startIndex, endIndex) {
         var minLine = Math.min(startLine, endLine);
         var maxLine = Math.max(startLine, endLine);
 
-        // 遍历从起始行的前一行到结束行的所有行
-        for (var lineIndex = minLine - 1; lineIndex <= maxLine - 1; lineIndex++) {
+        // 遍历从起始行到结束行的所有行
+        for (var lineIndex = minLine ; lineIndex <= maxLine ; lineIndex++) {
             if (lineIndex > 0) {
                 var currentLine = textFrame.lines[lineIndex - 1];
                 var maxFontSize = getMaxFontSize(currentLine);
