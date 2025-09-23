@@ -2,6 +2,7 @@
 #version: 1.1.0
 #description: 基于jieba的文本分词工具，词性标注、合并词语、自动分句等功能。
 import os
+import sys
 import jieba.posseg as pseg
 import argparse
 from tkinter import messagebox
@@ -10,9 +11,17 @@ import tkinter as tk
 # 句末标点列表
 sentence_endings_lianyong = {"…", "。", "！", "!", "？", "?", "，", "；", "：", "、", "—", "”", "）", "】", "｝", "」", "』", "》", ")"}
 sentence_endings = {"…", "。", "！", "!", "？", "?", "，", "；", "：", "、", "—", "”"} #分句用标点
-# 定义默认文件路径
-default_input_file = os.path.join(os.getenv('LOCALAPPDATA'), 'Temp', 'jieba_temp_input.txt')
-default_output_file = os.path.join(os.getenv('LOCALAPPDATA'), 'Temp', 'jieba_temp_output.txt')
+# 根据系统类型获取临时目录
+if sys.platform.startswith('win'):
+    # Windows 系统：使用 LOCALAPPDATA\Temp（兼容原逻辑）
+    temp_dir = os.path.join(os.getenv('LOCALAPPDATA', 'C:\\Temp'), 'Temp')
+else:
+    # macOS/Linux 系统：使用系统默认临时目录（TMPDIR 或 /tmp）
+    temp_dir = os.getenv('TMPDIR', '/tmp')
+
+# 生成输入/输出文件路径（保持文件名不变）
+default_input_file = os.path.join(temp_dir, 'jieba_temp_input.txt')
+default_output_file = os.path.join(temp_dir, 'jieba_temp_output.txt')
 # 调试用
 # default_input_file = "M:\\汉化\\PS_PNG\\断句测试.txt"
 # default_output_file = "M:\\汉化\\PS_PNG\\断句测试_jieba_output.txt"
