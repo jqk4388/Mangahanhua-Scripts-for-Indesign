@@ -1,5 +1,5 @@
 #author: 几千块
-#version: 1.1.0
+#version: 1.1.1
 #description: 基于jieba的文本分词工具，词性标注、合并词语、自动分句等功能。
 import os
 import sys

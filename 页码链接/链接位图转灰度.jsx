@@ -236,27 +236,7 @@ function processImageInPhotoshop(imagePath) {
         var bt = new BridgeTalk();
         bt.target = "photoshop";
         
-        var psScript = 
-            "var fileRef = new File('" + imagePath.replace(/'/g, "\\'") + "');\n" +
-            "if (fileRef.exists) {\n" +
-            "    var doc = app.open(fileRef);\n" +
-            "    if (doc.mode == DocumentMode.BITMAP) {\n" +
-            "        doc.changeMode(ChangeMode.GRAYSCALE);\n" +
-            "        var saveFile = new File('" + getSavePath(imagePath).replace(/'/g, "\\'") + "');\n" +
-            "        var psdSaveOptions = new PhotoshopSaveOptions();\n" +
-            "        psdSaveOptions.embedColorProfile = true;\n" +
-            "        psdSaveOptions.alphaChannels = true;\n" +
-            "        psdSaveOptions.layers = true;\n" +
-            "        doc.saveAs(saveFile, psdSaveOptions, true, Extension.LOWERCASE);\n" +
-            "        doc.close(SaveOptions.DONOTSAVECHANGES);\n" +
-            "        true;\n" +
-            "    } else {\n" +
-            "        doc.close(SaveOptions.DONOTSAVECHANGES);\n" +
-            "        true;\n" +
-            "    }\n" +
-            "} else {\n" +
-            "    false;\n" +
-            "}";
+        var psScript = createPhotoshopScript(imagePath);
         
         bt.body = psScript;
         
@@ -280,13 +260,66 @@ function processImageInPhotoshop(imagePath) {
     }
 }
 
+// Photoshop脚本函数
+function photoshopScriptFunction(fileRef, originalPath) {
+    if (fileRef.exists) {
+        var doc = app.open(fileRef);
+        if (doc.mode == DocumentMode.BITMAP) {
+            doc.changeMode(ChangeMode.GRAYSCALE);
+            var saveFile = new File(this.savePath);
+            
+            // 检查原始文件是否为TIFF格式，如果是则保持TIFF格式并使用LZW压缩
+            var isTiff = originalPath.toLowerCase().match(/\.(tif|tiff)$/);
+            if (isTiff) {
+                var tiffSaveOptions = new TiffSaveOptions();
+                tiffSaveOptions.embedColorProfile = true;
+                tiffSaveOptions.alphaChannels = true;
+                tiffSaveOptions.layers = true;
+                tiffSaveOptions.imageCompression = TIFFEncoding.TIFFLZW;
+                doc.saveAs(saveFile, tiffSaveOptions, true, Extension.LOWERCASE);
+            } else {
+                // PSD文件使用PSD保存选项
+                var psdSaveOptions = new PhotoshopSaveOptions();
+                psdSaveOptions.embedColorProfile = true;
+                psdSaveOptions.alphaChannels = true;
+                psdSaveOptions.layers = true;
+                doc.saveAs(saveFile, psdSaveOptions, true, Extension.LOWERCASE);
+            }
+            
+            doc.close(SaveOptions.DONOTSAVECHANGES);
+            return true;
+        } else {
+            doc.close(SaveOptions.DONOTSAVECHANGES);
+            return true;
+        }
+    } else {
+        return false;
+    }
+}
+
+// 创建Photoshop脚本
+function createPhotoshopScript(imagePath) {
+    // 构造函数字符串，替换文件路径和保存路径
+    var scriptFunctionStr = photoshopScriptFunction.toString()
+        .replace(/this\.savePath/g, "'" + getSavePath(imagePath).replace(/'/g, "\\'") + "'");
+    
+    var fullScript = 
+        "var fileRef = new File('" + imagePath.replace(/'/g, "\\'") + "');\n" +
+        "var originalPath = '" + imagePath.replace(/'/g, "\\'") + "';\n" +
+        scriptFunctionStr + ";\n" +
+        "photoshopScriptFunction(fileRef, originalPath);";
+    
+    return fullScript;
+}
+
 // 获取保存路径
 function getSavePath(originalPath) {
     var path = originalPath.toLowerCase();
     if (path.substr(-4) == ".psd") {
         return originalPath;
     } else if (path.substr(-4) == ".tif" || path.substr(-5) == ".tiff") {
-        return originalPath.replace(/\.(tif|tiff)$/i, ".psd");
+        // 对于TIFF文件，保持原格式
+        return originalPath;
     }
     return originalPath;
 }
