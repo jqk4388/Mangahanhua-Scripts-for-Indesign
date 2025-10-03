@@ -29,6 +29,7 @@ function getUserSelection() {
     rg.orientation = "row";
     var currentPageRadio = rg.add("radiobutton", undefined, "仅当前页面");
     var allDocumentRadio = rg.add("radiobutton", undefined, "整个文档");
+    var selectedLinksRadio = rg.add("radiobutton", undefined, "当前选中的链接");
     currentPageRadio.value = true;
     
     var buttonGroup = dialog.add("group");
@@ -40,7 +41,13 @@ function getUserSelection() {
     var result = null;
     
     okBtn.onClick = function() {
-        result = currentPageRadio.value ? "current" : "document";
+        if (currentPageRadio.value) {
+            result = "current";
+        } else if (allDocumentRadio.value) {
+            result = "document";
+        } else if (selectedLinksRadio.value) {
+            result = "selected";
+        }
         dialog.close();
     };
     
@@ -68,6 +75,21 @@ function getLinksToProcess(doc, selectionType) {
                 var image = pageItems[i].images[0];
                 if (image.hasOwnProperty("itemLink") && isSupportedImage(image.itemLink)) {
                     links.push(image.itemLink);
+                }
+            }
+        }
+    } else if (selectionType == "selected") {
+        // 处理当前选中的链接
+        var selection = app.selection;
+        if (selection.length > 0) {
+            for (var i = 0; i < selection.length; i++) {
+                var item = selection[i];
+                // 检查是否为矩形框架且包含图像
+                if (item.hasOwnProperty("images") && item.images.length > 0) {
+                    var image = item.images[0];
+                    if (image.hasOwnProperty("itemLink") && isSupportedImage(image.itemLink)) {
+                        links.push(image.itemLink);
+                    }
                 }
             }
         }
@@ -173,9 +195,7 @@ function processSingleLink(link) {
         // 通过BridgeTalk调用Photoshop处理图片
         if (processImageInPhotoshop(originalPath)) {
             // 更新InDesign中的链接
-            var newPath = originalPath.toLowerCase().substr(-4) == ".psd" ? 
-                          originalPath : 
-                          originalPath.replace(/\.(tif|tiff)$/i, ".psd");
+            var newPath = originalPath;
             
             // 等待文件系统更新
             sleepWithEvents(2000);
@@ -251,14 +271,14 @@ function processImageInPhotoshop(imagePath) {
         
         bt.send();
         
-        sleepWithEvents(3000);
+        sleepWithEvents(4000);
         
         return result;
     } catch (e) {
         $.writeln("调用Photoshop处理图片时出错: " + e.message);
         return false;
     }
-}
+};
 
 // Photoshop脚本函数
 function photoshopScriptFunction(fileRef, originalPath) {
@@ -266,24 +286,24 @@ function photoshopScriptFunction(fileRef, originalPath) {
         var doc = app.open(fileRef);
         if (doc.mode == DocumentMode.BITMAP) {
             doc.changeMode(ChangeMode.GRAYSCALE);
-            var saveFile = new File(this.savePath);
             
             // 检查原始文件是否为TIFF格式，如果是则保持TIFF格式并使用LZW压缩
-            var isTiff = originalPath.toLowerCase().match(/\.(tif|tiff)$/);
+            var ext = originalPath.toLowerCase().split('.').pop();
+            var isTiff = (ext === 'tif' || ext === 'tiff');
             if (isTiff) {
                 var tiffSaveOptions = new TiffSaveOptions();
                 tiffSaveOptions.embedColorProfile = true;
                 tiffSaveOptions.alphaChannels = true;
                 tiffSaveOptions.layers = true;
                 tiffSaveOptions.imageCompression = TIFFEncoding.TIFFLZW;
-                doc.saveAs(saveFile, tiffSaveOptions, true, Extension.LOWERCASE);
+                doc.saveAs(fileRef, tiffSaveOptions, true, Extension.LOWERCASE);
             } else {
                 // PSD文件使用PSD保存选项
                 var psdSaveOptions = new PhotoshopSaveOptions();
                 psdSaveOptions.embedColorProfile = true;
                 psdSaveOptions.alphaChannels = true;
                 psdSaveOptions.layers = true;
-                doc.saveAs(saveFile, psdSaveOptions, true, Extension.LOWERCASE);
+                doc.saveAs(fileRef, psdSaveOptions, true, Extension.LOWERCASE);
             }
             
             doc.close(SaveOptions.DONOTSAVECHANGES);

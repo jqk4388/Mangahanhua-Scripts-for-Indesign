@@ -25,6 +25,7 @@ function main() {
         rangePanel.alignChildren = "left";
         var currentPageRadio = rangePanel.add("radiobutton", undefined, "当前页面");
         var entireDocumentRadio = rangePanel.add("radiobutton", undefined, "整个文档");
+        var selectedLinksRadio = rangePanel.add("radiobutton", undefined, "当前选中的链接");
         entireDocumentRadio.value = true; // 默认选择整个文档
         
         // 操作类型面板
@@ -97,10 +98,22 @@ function main() {
             // 执行相应操作
         if (renameRadio.value) {
             // 执行重命名操作
-            renameLinks(myDocument, targetPages, prefixInput.text, suffixInput.text, includePageNumberCheckbox.value);
+            if (selectedLinksRadio.value) {
+                // 处理选中的链接
+                renameSelectedLinks(myDocument, prefixInput.text, suffixInput.text, includePageNumberCheckbox.value);
+            } else {
+                // 处理页面范围内的链接
+                renameLinks(myDocument, targetPages, prefixInput.text, suffixInput.text, includePageNumberCheckbox.value);
+            }
         } else {
             // 执行删除操作
-            deleteLinks(myDocument, targetPages, keepFrameCheckbox.value);
+            if (selectedLinksRadio.value) {
+                // 删除选中的链接
+                deleteSelectedLinks(myDocument, keepFrameCheckbox.value);
+            } else {
+                // 删除页面范围内的链接
+                deleteLinks(myDocument, targetPages, keepFrameCheckbox.value);
+            }
         }
         };
         
@@ -214,6 +227,117 @@ function renameLinks(document, pages, prefix, suffix, includePageNumber) {
     }
 }
 
+// 重命名选中的链接函数
+function renameSelectedLinks(document, prefix, suffix, includePageNumber) {
+    try {
+        // 检查是否有选中的链接
+        if (app.selection.length === 0) {
+            alert("请先选择至少一个链接图像");
+            return;
+        }
+        
+        var selectedLinks = [];
+        // 筛选出选中的链接
+        for (var i = 0; i < app.selection.length; i++) {
+            var item = app.selection[i];
+            if (item.hasOwnProperty("images") && item.images.length > 0) {
+                var image = item.images[0];
+                if (image.hasOwnProperty("itemLink")) {
+                    selectedLinks.push(image.itemLink);
+                }
+            }
+        }
+        
+        if (selectedLinks.length === 0) {
+            alert("未找到选中的链接图像");
+            return;
+        }
+        
+        var processedCount = 0;
+        
+        // 创建进度条窗口
+        var progressWindow = new Window("palette", "处理进度");
+        progressWindow.orientation = "column";
+        progressWindow.alignChildren = "fill";
+        var progressBar = progressWindow.add("progressbar", undefined, 0, selectedLinks.length);
+        var progressText = progressWindow.add("statictext", undefined, "正在处理...");
+        progressWindow.show();
+        
+        // 遍历选中的链接
+        for (var i = 0; i < selectedLinks.length; i++) {
+            var link = selectedLinks[i];
+            
+            // 更新进度条
+            progressBar.value = i + 1;
+            progressText.text = "正在处理 " + (i + 1) + " / " + selectedLinks.length;
+            progressWindow.update();
+            
+            try {
+                // 获取链接文件
+                var file = new File(link.filePath);
+                if (!file.exists) {
+                    continue;
+                }
+                
+                // 获取原始文件名（不含扩展名）
+                var originalName = getFileNameWithoutExtension(link.name);
+                var extension = link.name.substring(link.name.lastIndexOf(".") + 1);
+                
+                // 构造新名称
+                var newName = prefix + originalName + suffix;
+                
+                // 获取链接的父对象所在的页面
+                var parentImage = link.parent;
+                var parentFrame = parentImage.parent;
+                var page = parentFrame.parentPage;
+                var pageName = page.name;
+                
+                // 添加页面名称到新文件名中（根据选项决定是否包含页码）
+                var nameChanged = "";
+                if (includePageNumber) {
+                    nameChanged = padZero(pageName) + "-" + newName;
+                } else {
+                    nameChanged = newName;
+                }
+                
+                // 检查文件是否已存在，如果存在则添加版本号
+                var nameNew = nameChanged;
+                var fileVersion = 0;
+                var fileNew = new File(file.path + "/" + nameNew + "." + extension);
+                while (fileNew.exists) {
+                    fileVersion++;
+                    nameNew = nameChanged + "~" + fileVersion;
+                    fileNew = new File(file.path + "/" + nameNew + "." + extension);
+                }
+                
+                // 重命名文件
+                if (file.rename(nameNew + "." + extension)) {
+                    // 重链接所有同名链接
+                    for (var j = 0; j < document.links.length; j++) {
+                        if (document.links[j].name == link.name) {
+                            var relinkFile = new File(file.path + "/" + nameNew + "." + extension);
+                            document.links[j].relink(relinkFile);
+                            document.links[j].update();
+                            processedCount++;
+                        }
+                    }
+                }
+            } catch (renameError) {
+                // 忽略单个链接的错误，继续处理其他链接
+            }
+        }
+        
+        // 关闭进度条
+        progressWindow.close();
+        
+        // 显示结果
+        alert("重命名完成，共处理了 " + processedCount + " 个链接。");
+        
+    } catch (e) {
+        alert("重命名过程中发生错误: " + e.message);
+    }
+}
+
 // 删除链接函数
 function deleteLinks(document, pages, keepFrame) {
     try {
@@ -275,6 +399,87 @@ function deleteLinks(document, pages, keepFrame) {
         if (processedCount === 0) {
             alert("未找到符合条件的链接。可能是因为链接被锁定无法删除。");
         }else {
+            alert("删除完成，共删除了 " + processedCount + " 个链接。");
+        }
+        
+    } catch (e) {
+        alert("删除过程中发生错误: " + e.message);
+    }
+}
+
+// 删除选中的链接函数
+function deleteSelectedLinks(document, keepFrame) {
+    try {
+        // 检查是否有选中的链接
+        if (app.selection.length === 0) {
+            alert("请先选择至少一个链接图像");
+            return;
+        }
+        
+        var selectedLinks = [];
+        // 筛选出选中的链接
+        for (var i = 0; i < app.selection.length; i++) {
+            var item = app.selection[i];
+            if (item.hasOwnProperty("images") && item.images.length > 0) {
+                var image = item.images[0];
+                if (image.hasOwnProperty("itemLink")) {
+                    selectedLinks.push(image.itemLink);
+                }
+            }
+        }
+        
+        if (selectedLinks.length === 0) {
+            alert("未找到选中的链接图像");
+            return;
+        }
+        
+        var processedCount = 0;
+        
+        // 创建进度条窗口
+        var progressWindow = new Window("palette", "处理进度");
+        progressWindow.orientation = "column";
+        progressWindow.alignChildren = "fill";
+        var progressBar = progressWindow.add("progressbar", undefined, 0, selectedLinks.length);
+        var progressText = progressWindow.add("statictext", undefined, "正在处理...");
+        progressWindow.show();
+        
+        // 反向遍历以避免索引问题
+        for (var j = selectedLinks.length - 1; j >= 0; j--) {
+            var linkToProcess = selectedLinks[j];
+            
+            // 更新进度条
+            progressBar.value = selectedLinks.length - j;
+            progressText.text = "正在处理 " + (selectedLinks.length - j) + " / " + selectedLinks.length;
+            progressWindow.update();
+            
+            try {
+                // 获取链接的父对象（Image对象）
+                var parentImage = linkToProcess.parent;
+                
+                // 获取Image对象的父对象（Rectangle框架）
+                var parentFrame = parentImage.parent;
+                
+                if (keepFrame) {
+                    // 仅删除链接内容，保留框架
+                    parentImage.remove();
+                } else {
+                    // 删除整个框架
+                    parentFrame.remove();
+                }
+                
+                processedCount++;
+            } catch (deleteError) {
+                // 忽略单个链接的错误，继续处理其他链接
+            }
+        }
+        
+        // 关闭进度条
+        progressWindow.close();
+        
+        // 显示结果
+        if (processedCount === 0) {
+            alert("未找到符合条件的链接。可能是因为链接被锁定无法删除。");
+        } else {
             alert("删除完成，共删除了 " + processedCount + " 个链接。");
         }
         
