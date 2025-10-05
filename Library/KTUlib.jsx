@@ -10,9 +10,9 @@ var thePages  = app.activeDocument.pages
 var theLayers = app.activeDocument.layers
 var theMaster = app.activeDocument.masterSpreads.itemByName('A-Master')
 
-// EXECUTE SCRIPT AS SINGLE UNDOABLE STEP
-// Argument: 1: The script to execute, 2: A string representing the action of the script to the user
-// Returns: The the return value of the executed script, maybe.
+// 将脚本作为单个可撤销步骤执行
+// 参数：1：要执行的脚本，2：一个向用户描述脚本操作的字符串
+// 返回：可能是所执行脚本的返回值。
 
 function KTUDoScriptAsUndoable(theScript, scriptDesc) {
     if (parseFloat(app.version) < 6) {
@@ -22,11 +22,10 @@ function KTUDoScriptAsUndoable(theScript, scriptDesc) {
     }
 }
 
-// EXECUTE SCRIPT ON EVERY PAGE
-// Argument: 1: The script to execute, 2: A string representing the action of the script to the user
-// The function passed as an argument to this script should take a single Page object as its argument, and apply some transformation
-// to that page or to the objects contained within it. 
-// Returns: The the return value of the executed script, maybe.
+// 在每个页面上执行脚本
+// 参数：1：要执行的脚本，2：向用户描述该脚本作用的字符串
+// 作为参数传递给此脚本的函数应接受单个Page对象作为其参数，并对该页面或其中包含的对象进行一些转换
+// 返回：可能是所执行脚本的返回值。
 
 function KTUDoEveryPage(theScript, scriptDesc) {
     if (parseFloat(app.version) < 6) {
