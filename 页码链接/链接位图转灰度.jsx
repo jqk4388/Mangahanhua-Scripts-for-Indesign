@@ -80,19 +80,7 @@ function getLinksToProcess(doc, selectionType) {
         }
     } else if (selectionType == "selected") {
         // 处理当前选中的链接
-        var selection = app.selection;
-        if (selection.length > 0) {
-            for (var i = 0; i < selection.length; i++) {
-                var item = selection[i];
-                // 检查是否为矩形框架且包含图像
-                if (item.hasOwnProperty("images") && item.images.length > 0) {
-                    var image = item.images[0];
-                    if (image.hasOwnProperty("itemLink") && isSupportedImage(image.itemLink)) {
-                        links.push(image.itemLink);
-                    }
-                }
-            }
-        }
+        links = getSelectedLinksFromClipboard(doc);
     } else {
         // 处理整个文档
         var allLinks = doc.links;
@@ -104,6 +92,140 @@ function getLinksToProcess(doc, selectionType) {
     }
     
     return links;
+}
+
+// 通过剪贴板获取选中的链接
+function getSelectedLinksFromClipboard(doc) {
+    var links = [];
+    
+    // 复制选中的链接信息
+    try {
+        var action = app.menuActions.itemByName("复制选定链接的信息");
+        if (!action.isValid) action = app.menuActions.itemByName("Copy Link Info");
+        if (action.isValid) action.invoke();
+        else {
+            alert("找不到菜单命令");
+            return links;
+        }
+    } catch (error) {
+        alert("请先在链接窗口中选中链接：" + error);
+    }
+    
+    // 等待剪贴板更新
+    sleepWithEvents(1000);
+    
+    // 获取剪贴板内容
+    var clipboardText = getClipboardText();
+    
+    if (!clipboardText) {
+        alert("无法获取剪贴板内容");
+        return links;
+    }
+    
+    // 解析剪贴板内容，提取文件名
+    var filenames = parseClipboardContent(clipboardText);
+    
+    if (filenames.length === 0) {
+        alert("未从剪贴板中解析到文件名");
+        return links;
+    }
+    
+    // 根据文件名查找对应的链接
+    var allLinks = doc.links;
+    for (var i = 0; i < filenames.length; i++) {
+        var filename = filenames[i];
+        for (var j = 0; j < allLinks.length; j++) {
+            var link = allLinks[j];
+            if (isSupportedImage(link)) {
+                var linkFilename = getFileNameFromPath(link.filePath);
+                if (linkFilename === filename) {
+                    links.push(link);
+                    break;
+                }
+            }
+        }
+    }
+    
+    return links;
+}
+
+// 从剪贴板内容中解析文件名
+function parseClipboardContent(content) {
+    var filenames = [];
+    var lines = content.split('\n');
+    
+    // 跳过标题行
+    var startIndex = 1;
+    if (lines.length > 1 && lines[0].indexOf("名称") !== -1 && lines[0].indexOf("状态") !== -1) {
+        startIndex = 1;
+    } else {
+        startIndex = 0;
+    }
+    
+    for (var i = startIndex; i < lines.length; i++) {
+        var line = lines[i];
+        if (line) {
+            // 提取第一列作为文件名
+            var columns = line.split('\t');
+            if (columns.length > 0 && columns[0]) {
+                filenames.push(columns[0]);
+            }
+        }
+    }
+    
+    return filenames;
+}
+
+// 获取路径中的文件名
+function getFileNameFromPath(filePath) {
+    if (!filePath) return "";
+    
+    var parts = filePath.split(/[\/\\]/);
+    var filename = parts[parts.length - 1];
+    
+    return filename;
+}
+
+// 获取剪贴板文本内容
+function getClipboardText() {
+    try {
+        // 创建临时文件来获取剪贴板内容
+        var tempFile = new File(Folder.temp.absoluteURI + "/clipboard_temp.txt");
+        if (tempFile.exists) {
+            tempFile.remove();
+        }
+        
+        // 使用系统命令获取剪贴板内容（Windows）
+        if (Folder.fs === "Windows") {
+            var scriptFile = new File(Folder.temp.absoluteURI + "/get_clipboard.vbs");
+            var scriptContent = 'Set objHTML = CreateObject("htmlfile")\n' +
+                               'strContent = objHTML.ParentWindow.ClipboardData.GetData("text")\n' +
+                               'Set objFSO = CreateObject("Scripting.FileSystemObject")\n' +
+                               'Set objFile = objFSO.CreateTextFile("' + tempFile.fsName.replace(/\\/g, "\\\\") + '", True)\n' +
+                               'objFile.Write strContent\n' +
+                               'objFile.Close\n';
+            
+            scriptFile.open("w");
+            scriptFile.write(scriptContent);
+            scriptFile.close();
+            
+            scriptFile.execute();
+            sleepWithEvents(1000);
+            
+            if (tempFile.exists) {
+                tempFile.open("r");
+                var content = tempFile.read();
+                tempFile.close();
+                tempFile.remove();
+                scriptFile.remove();
+                return content;
+            }
+        }
+        return "";
+    } catch (e) {
+        $.writeln("获取剪贴板内容时出错: " + e.message);
+        return "";
+    }
 }
 
 // 检查是否为支持的图片格式
