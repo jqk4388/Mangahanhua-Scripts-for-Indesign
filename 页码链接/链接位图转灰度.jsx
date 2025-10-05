@@ -195,8 +195,8 @@ function getClipboardText() {
             tempFile.remove();
         }
         
-        // 使用系统命令获取剪贴板内容（Windows）
         if (Folder.fs === "Windows") {
+            // 使用系统命令获取剪贴板内容（Windows）
             var scriptFile = new File(Folder.temp.absoluteURI + "/get_clipboard.vbs");
             var scriptContent = 'Set objHTML = CreateObject("htmlfile")\n' +
                                'strContent = objHTML.ParentWindow.ClipboardData.GetData("text")\n' +
@@ -210,6 +210,33 @@ function getClipboardText() {
             scriptFile.close();
             
             scriptFile.execute();
+            sleepWithEvents(1000);
+            
+            if (tempFile.exists) {
+                tempFile.open("r");
+                var content = tempFile.read();
+                tempFile.close();
+                tempFile.remove();
+                scriptFile.remove();
+                return content;
+            }
+        } else if (Folder.fs === "Macintosh") {
+            // 使用AppleScript获取剪贴板内容（Mac）
+            var scriptFile = new File(Folder.temp.absoluteURI + "/get_clipboard.scpt");
+            var scriptContent = 'set clipboardText to the clipboard as string\n' +
+                               'set fileRef to open for access POSIX file "' + tempFile.fsName + '" with write permission\n' +
+                               'set eof fileRef to 0\n' +
+                               'write clipboardText to fileRef\n' +
+                               'close access fileRef';
+            
+            scriptFile.open("w");
+            scriptFile.write(scriptContent);
+            scriptFile.close();
+            
+            // 执行AppleScript
+            var result = app.doScript("run script (read file \"" + scriptFile.fsName + "\" as alias)", 
+                                      ScriptLanguage.APPLESCRIPT_LANGUAGE);
+            
             sleepWithEvents(1000);
             
             if (tempFile.exists) {
