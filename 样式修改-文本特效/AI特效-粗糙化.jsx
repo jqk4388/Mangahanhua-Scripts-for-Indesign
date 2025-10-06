@@ -77,30 +77,6 @@ function removeOutlined(obj) {
         }
     }
 }
-/**
- * 保存图层状态
- */
-function saveLayerStates() {
-    var states = [];
-    for (var i = 0; i < theLayers.length; i++) {
-        var layer = theLayers[i];
-        states.push({
-            layer: layer,
-            visible: layer.visible,
-            items: []
-        });
-        
-        // 保存当前图层中各项目的可见性状态
-        var items = layer.pageItems;
-        for (var j = 0; j < items.length; j++) {
-            states[i].items.push({
-                item: items[j],
-                visible: items[j].visible
-            });
-        }
-    }
-    return states;
-}
 
 /**
  * 隐藏未选中的元素（仅影响选中文本框所在的页面）
@@ -147,28 +123,109 @@ function hideUnselectedElements(selectedFrames) {
         }
     }
 }
+/**
+ * 保存所有图层及对象的可见状态（支持分组）
+ */
+function saveLayerStates() {
+    var states = [];
 
+    for (var i = 0; i < theLayers.length; i++) {
+        var layer = theLayers[i];
+        var layerState = {
+            id: layer.id,                 // 记录图层 ID
+            visible: layer.visible,
+            items: []
+        };
+
+        // 保存图层中对象的可见性（递归支持分组）
+        var items = layer.pageItems;
+        for (var j = 0; j < items.length; j++) {
+            layerState.items.push(collectItemState(items[j]));
+        }
+
+        states.push(layerState);
+    }
+
+    return states;
+}
 
 /**
- * 还原图层状态
+ * 递归收集对象状态（含分组）
  */
-function restoreLayerStates(states,tempFrame) {
-    if (!states) return;
-    
+function collectItemState(item) {
+    var state = {
+        id: item.id,
+        visible: item.visible,
+        type: item.constructor.name,
+        children: []
+    };
+
+    // 如果是编组对象，递归保存内部子对象状态
+    if (item instanceof Group) {
+        var subItems = item.pageItems;
+        for (var i = 0; i < subItems.length; i++) {
+            state.children.push(collectItemState(subItems[i]));
+        }
+    }
+
+    return state;
+}
+
+/**
+ * 恢复所有图层及对象的可见状态
+ */
+function restoreLayerStates(states, tempFrame) {
+    if (!states || !states.length) return;
+
     for (var i = 0; i < states.length; i++) {
-        var state = states[i];
-        state.layer.visible = state.visible;
-        
-        for (var j = 0; j < state.items.length; j++) {
-            try {
-                state.items[j].item.visible = state.items[j].visible;
-                tempFrame.visible = false;
-            } catch(e) {
-                // 忽略单项恢复错误
-            }
+        var layerState = states[i];
+        var layer = getByID(app.activeDocument.layers, layerState.id);
+        if (!layer) continue;
+
+        try {
+            layer.visible = layerState.visible;
+        } catch(e) {}
+
+        // 恢复该图层中对象状态
+        for (var j = 0; j < layerState.items.length; j++) {
+            restoreItemState(layerState.items[j], layer);
+        }
+    }
+
+    // 最后统一隐藏临时框
+    if (tempFrame && tempFrame.isValid) {
+        tempFrame.visible = false;
+    }
+}
+
+/**
+ * 递归恢复单个对象状态
+ */
+function restoreItemState(state, parentContainer) {
+    var item = getByID(parentContainer.pageItems, state.id);
+    if (!item) return; // 被删除则忽略
+
+    try {
+        item.visible = state.visible;
+    } catch(e) {}
+
+    if (state.children && state.children.length > 0 && item instanceof Group) {
+        for (var i = 0; i < state.children.length; i++) {
+            restoreItemState(state.children[i], item);
         }
     }
 }
+
+/**
+ * 根据 ID 从集合中查找对象
+ */
+function getByID(collection, id) {
+    for (var i = 0; i < collection.length; i++) {
+        if (collection[i].id == id) return collection[i];
+    }
+    return null;
+}
+
 
 /**
  * 处理单个文本框
