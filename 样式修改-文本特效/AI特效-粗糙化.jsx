@@ -6,7 +6,7 @@ function aiRoughenEffect() {
     try {
         // 检查是否有选中的文本框
         if (app.selection.length === 0) {
-            alert("请先选中一个或多个文本框");
+            alert("请先选中一个文本框");
             return;
         }
 
@@ -27,8 +27,8 @@ function aiRoughenEffect() {
             }
         }
         
-        if (textFrames.length === 0) {
-            alert("请选择至少一个文本框");
+        if (textFrames.length > 1) {
+            alert("只选择一个文本框！");
             return;
         }
         
@@ -40,10 +40,10 @@ function aiRoughenEffect() {
         
         // 处理每个选中的文本框
         for (var j = 0; j < textFrames.length; j++) {
-            processTextFrame(textFrames[j], docFolder, j)
+            var tempFrame = processTextFrame(textFrames[j], docFolder, j)
         }
         // 还原图层状态
-        restoreLayerStates(layerStates);
+        restoreLayerStates(layerStates, tempFrame);
 
     } catch (err) {
         alert("发生错误，请先保存文件！ \n" + err.description);
@@ -103,40 +103,56 @@ function saveLayerStates() {
 }
 
 /**
- * 隐藏未选中的元素
+ * 隐藏未选中的元素（仅影响选中文本框所在的页面）
  */
 function hideUnselectedElements(selectedFrames) {
     // 隐藏所有图层
     for (var i = 0; i < theLayers.length; i++) {
         theLayers[i].visible = false;
     }
-    
-    // 显示包含选中文本框的图层，并隐藏其他元素
+
+    // 记录已处理过的页面，避免重复
+    var processedPages = {};
+
+    // 显示包含选中文本框的图层，并隐藏该页面中非选中对象
     for (var j = 0; j < selectedFrames.length; j++) {
         var frame = selectedFrames[j];
         var layer = frame.itemLayer;
+        var page = frame.parentPage;
+
+        // 显示该图层
         layer.visible = true;
-        
-        // 隐藏该图层中除选中文本框外的其他元素
-        var items = layer.pageItems;
-        for (var k = 0; k < items.length; k++) {
-            // 检查是否为选中的文本框
+
+        // 避免重复处理同一页
+        var pageKey = layer.name + "_" + page.name;
+        if (processedPages[pageKey]) continue;
+        processedPages[pageKey] = true;
+
+        // 仅处理该页面上的对象
+        var pageItems = page.pageItems;
+        for (var k = 0; k < pageItems.length; k++) {
+            var item = pageItems[k];
+            if (item.itemLayer != layer) continue; // 只处理当前图层的对象
+
+            // 判断是否为选中框
             var isSelected = false;
             for (var l = 0; l < selectedFrames.length; l++) {
-                if (items[k] == selectedFrames[l]) {
+                if (item == selectedFrames[l]) {
                     isSelected = true;
                     break;
                 }
             }
-            items[k].visible = isSelected;
+
+            item.visible = isSelected;
         }
     }
 }
 
+
 /**
  * 还原图层状态
  */
-function restoreLayerStates(states) {
+function restoreLayerStates(states,tempFrame) {
     if (!states) return;
     
     for (var i = 0; i < states.length; i++) {
@@ -146,6 +162,7 @@ function restoreLayerStates(states) {
         for (var j = 0; j < state.items.length; j++) {
             try {
                 state.items[j].item.visible = state.items[j].visible;
+                tempFrame.visible = false;
             } catch(e) {
                 // 忽略单项恢复错误
             }
@@ -203,8 +220,8 @@ function processTextFrame(frame, folder, index) {
         // 调用Illustrator进行粗糙化处理
         roughenInIllustrator(filePath);        
         // 将处理后的AI文件置入到文档中
-        placeAIFile(page, filePath, tempFrame);
-        
+        placeAIFile(page, filePath);
+        return tempFrame;
     } catch (err) {
         alert("处理文本框时出错: " + err.description);
     }
@@ -250,8 +267,7 @@ function exportToAI(page, filePath) {
         }
         
         // 设置导出参数
-        var exportParams = new PDFExportPreference();
-        exportParams.pageRange = "" + (page.index + 1); // 只导出当前页面
+        app.pdfExportPreferences.pageRange = page.name;
         
         // 执行导出
         theDoc.exportFile(ExportFormat.PDF_TYPE, filePath, false, preset);
@@ -268,7 +284,7 @@ function exportToAI(page, filePath) {
  * @param {number} detailPerInch - 每英寸细节数
  * @param {boolean} smooth - 是否使用平滑点（true=平滑，false=尖角）
  */
-function illustratorRoughenScript(filePath, sizePercent, detailPerInch) {
+function illustratorRoughenScript(filePath, sizePercent, detailPerInch) { 
     var doc = app.open(new File(filePath));
 
     function applyEffectToGroup(group) {
@@ -293,21 +309,7 @@ function illustratorRoughenScript(filePath, sizePercent, detailPerInch) {
         }
     }
 
-    // 遍历所有图层
-    if (doc && doc.layers.length > 0) {
-        for (var l = 0; l < doc.layers.length; l++) {
-            var layer = doc.layers[l];
-            for (var g = 0; g < layer.groupItems.length; g++) {
-                applyEffectToGroup(layer.groupItems[g]);
-            }
-        }
-    }
-
-    doc.save();
-    doc.close();
-}
-
-function LE_Roughen(item, options) {
+    function LE_Roughen(item, options) {
     try {
         var defaults = {
             amount: 5,
@@ -329,62 +331,75 @@ function LE_Roughen(item, options) {
     }
 }
 
-/**
- * 合并默认参数与用户选项
- * @param {Object} defaults - 默认参数
- * @param {Object} [options] - 传入的选项
- * @param {String} [funcName] - 当前函数名（用于报错）
- * @returns {Object} - 合并后的参数对象
- */
-function defaultsObject(item, defaults, options, funcName) {
-    try {
-        if (!defaults && !options) return {};
-        if (!defaults) return options;
-        if (!options) return defaults;
-        for (var key in options) {
-            if (options.hasOwnProperty(key)) {
-                defaults[key] = options[key];
+    /**
+     * 合并默认参数与用户选项
+     * @param {Object} defaults - 默认参数
+     * @param {Object} [options] - 传入的选项
+     * @param {String} [funcName] - 当前函数名（用于报错）
+     * @returns {Object} - 合并后的参数对象
+     */
+    function defaultsObject(item, defaults, options, funcName) {
+        try {
+            if (!defaults && !options) return {};
+            if (!defaults) return options;
+            if (!options) return defaults;
+            for (var key in options) {
+                if (options.hasOwnProperty(key)) {
+                    defaults[key] = options[key];
+                }
+            }
+            return defaults;
+        } catch (error) {
+            throw new Error(funcName + ' failed to parse options object. ' + error);
+        }
+    }
+
+
+    /**
+     * 对单个或多个 Illustrator 对象应用 LiveEffect
+     * @param {(PageItem|Array)} item - 可是单个对象或多个对象数组
+     * @param {String} xml - LiveEffect 的 XML 字符串
+     * @param {Boolean} [expand=false] - 是否执行“扩展外观”
+     */
+    function applyEffect(item, xml, expand) {
+        if (item == undefined) throw new Error('applyEffect failed: No item provided.');
+
+        // 判断是单个对象还是数组
+        var items = [];
+        if (item instanceof Array) {
+            items = item;
+        } else if (item.typename != undefined) {
+            items = [item];
+        } else {
+            throw new Error('applyEffect failed: Unexpected item type.');
+        }
+
+        // 对每个项目应用效果
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (!it || !it.applyEffect) continue;
+            try {
+                it.applyEffect(xml);
+                if (expand) app.executeMenuCommand('expandStyle');
+            } catch (e) {
+                $.writeln('⚠️ applyEffect error on item ' + i + ': ' + e);
             }
         }
-        return defaults;
-    } catch (error) {
-        throw new Error(funcName + ' failed to parse options object. ' + error);
-    }
-}
-
-
-/**
- * 对单个或多个 Illustrator 对象应用 LiveEffect
- * @param {(PageItem|Array)} item - 可是单个对象或多个对象数组
- * @param {String} xml - LiveEffect 的 XML 字符串
- * @param {Boolean} [expand=false] - 是否执行“扩展外观”
- */
-function applyEffect(item, xml, expand) {
-    if (item == undefined) throw new Error('applyEffect failed: No item provided.');
-
-    // 判断是单个对象还是数组
-    var items = [];
-    if (item instanceof Array) {
-        items = item;
-    } else if (item.typename != undefined) {
-        items = [item];
-    } else {
-        throw new Error('applyEffect failed: Unexpected item type.');
     }
 
-    // 对每个项目应用效果
-    for (var i = 0; i < items.length; i++) {
-        var it = items[i];
-        if (!it || !it.applyEffect) continue;
-        try {
-            it.applyEffect(xml);
-            if (expand) app.executeMenuCommand('expandStyle');
-        } catch (e) {
-            $.writeln('⚠️ applyEffect error on item ' + i + ': ' + e);
+    // 遍历所有图层
+    if (doc && doc.layers.length > 0) {
+        for (var l = 0; l < doc.layers.length; l++) {
+            var layer = doc.layers[l];
+            for (var g = 0; g < layer.groupItems.length; g++) {
+                applyEffectToGroup(layer.groupItems[g]);
+            }
         }
     }
-}
 
+    doc.save();
+    doc.close();
+}
 
 /**
  * 调用Illustrator进行粗糙化处理
@@ -410,7 +425,7 @@ function roughenInIllustrator(filePath) {
         var script = 
             "var filePath = '" + filePath.fsName.replace(/\\/g, "\\\\") + "';\n" +
             scriptFunction + ";\n" +
-            "illustratorRoughenScript(filePath,0.3,50);";
+            "illustratorRoughenScript(filePath,0.15,50);";
         
         // 创建BridgeTalk消息
         var bt = new BridgeTalk();
@@ -431,7 +446,7 @@ function roughenInIllustrator(filePath) {
         bt.send();
         
         // 等待一段时间确保处理完成
-        sleepWithEvents(6000);
+        sleepWithEvents(3000);
         return result;
     } catch (err) {
         alert("调用Illustrator处理时出错: " + err.description + "\n将继续执行后续操作");
@@ -453,28 +468,10 @@ function sleepWithEvents(milliseconds) {
 /**
  * 将AI文件置入到文档中
  */
-function placeAIFile(page, filePath, originalFrame) {
+function placeAIFile(page, filePath) {
     try {
-        // 获取页面的边界（与页面左上角对齐）
-        var pageBounds = page.bounds;
-        
         // 在相同页面上置入AI文件
         var placedAsset = page.place(new File(filePath.fsName))[0];
-        
-        // 获取置入对象当前的几何边界
-        var itemBounds = placedAsset.geometricBounds;
-        
-        // 计算置入对象的宽度和高度
-        var itemWidth = itemBounds[3] - itemBounds[1];
-        var itemHeight = itemBounds[2] - itemBounds[0];
-        
-        // 设置置入文件的位置与页面左上角对齐
-        placedAsset.geometricBounds = [
-            pageBounds[0],                 // 上边 y坐标
-            pageBounds[1],                 // 左边 x坐标
-            pageBounds[0] + itemHeight,    // 下边 y坐标 + 高度
-            pageBounds[1] + itemWidth      // 右边 x坐标 + 宽度
-        ];
         placedAsset.parent.locked = true;
     } catch (err) {
         alert("置入AI文件时出错: " + err.description);
