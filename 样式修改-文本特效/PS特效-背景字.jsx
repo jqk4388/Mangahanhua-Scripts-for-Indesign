@@ -130,7 +130,7 @@ function main() {
                 if (resultObj && resultObj.newPath) {
                     // 更新链接: 在文档中查找原链接并替换
                     updateLinkInDocument(doc, chosenLink, resultObj.newPath);
-                    alert('处理完成，已更新链接: ' + resultObj.newPath);
+                    // alert('处理完成，已更新链接: ' + resultObj.newPath);
                 } else {
                     alert('处理完成，但未返回新的链接路径。');
                 }
