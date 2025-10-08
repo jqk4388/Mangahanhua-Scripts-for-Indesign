@@ -42,8 +42,6 @@ function main() {
             // 处理编组: 尝试导出编组为一个矢量文件（PDF）以便 Photoshop place 为智能对象
             frameInfo = { isGroup: true };
             originalFrameId = first.id;
-            // 隐藏原编组
-            hideItem(first);
             // 导出编组为临时 PDF
             try {
                 var exported = exportGroupToPDF(first);
@@ -340,46 +338,75 @@ function exportGroupToPDF(groupObj) {
         var baseName = 'id_group_export_' + new Date().getTime();
         var pdfFile = File(tmpFolder + '/' + baseName + '.pdf');
 
-        // 创建一个临时文档，将编组复制进去导出，然后删除临时文档
         var doc = app.activeDocument;
-        // 复制组到一个新的临时文档: 新建文档并粘贴
-        var tmpDoc = app.documents.add();
-        // 复制组到剪贴板并粘贴
-        try {
-            app.copy();
-        } catch (eCopy) {
-            // 如果 app.copy 不可用，尝试使用 selection.copy
-            try { groupObj.copy(); } catch (e2) {}
+        var page = null;
+        try { page = groupObj.parentPage; } catch (e) { page = null; }
+        if (!page) {
+            // 若找不到 parentPage，回退到导出整个文档（不理想），但仍尝试
+            var pdfExpPreset = app.pdfExportPresets.itemByName('[高质量打印]');
+            var usePreset = null;
+            try { if (pdfExpPreset && pdfExpPreset.isValid) usePreset = pdfExpPreset; } catch (e) { usePreset = null; }
+            if (!usePreset) {
+                try { usePreset = app.pdfExportPresets[0]; } catch (e) { usePreset = null; }
+            }
+            try { doc.exportFile(ExportFormat.pdfType, pdfFile, false, usePreset); } catch (eExport) { try { doc.exportFile(ExportFormat.pdfType, pdfFile); } catch (e2) { throw e2; } }
+            return pdfFile.fullName;
         }
-        // 激活临时文档并粘贴
-        app.activeDocument = tmpDoc;
-        try { tmpDoc.pages[0].paste(); } catch (ePaste) {}
 
-        // 导出页面为 PDF
-        var pdfExpPreset = app.pdfExportPresets.itemByName('High Quality Print');
+        // 收集页面上的项目，保存可见性状态，并隐藏除 groupObj 之外的项
+        var items = page.pageItems;
+        var visStates = [];
+        for (var i = 0; i < items.length; i++) {
+            try {
+                var it = items[i];
+                // 跳过目标组本身
+                if (it === groupObj) { visStates.push({item: it, visible: it.visible}); continue; }
+                // 记录并隐藏
+                try { visStates.push({item: it, visible: it.visible}); } catch (e) { visStates.push({item: it, visible: true}); }
+                try { it.visible = false; } catch (e) {}
+            } catch (e) {}
+        }
+
+        // 导出该页面为 PDF：优先使用 High Quality Print 预设
+        var pdfExpPreset = null;
+        try { pdfExpPreset = app.pdfExportPresets.itemByName('High Quality Print'); } catch (e) { pdfExpPreset = null; }
         var usePreset = null;
-        try {
-            if (pdfExpPreset && pdfExpPreset.isValid) usePreset = pdfExpPreset;
-        } catch (e) { usePreset = null; }
+        try { if (pdfExpPreset && pdfExpPreset.isValid) usePreset = pdfExpPreset; } catch (e) { usePreset = null; }
         if (!usePreset) {
-            // 尝试使用默认
             try { usePreset = app.pdfExportPresets[0]; } catch (e) { usePreset = null; }
         }
-        // 构建导出范围为当前页面
+
         try {
-            tmpDoc.exportFile(ExportFormat.pdfType, pdfFile, false, usePreset);
+            // 尝试只导出该页
+            try {
+                doc.exportFile(ExportFormat.pdfType, pdfFile, false, usePreset, page);
+            } catch (eExportRange) {
+                // 如果指定 page 导出失败，退回到通过 pdfExportPreferences 设置 pageRange
+                try {
+                    var oldRange = app.pdfExportPreferences.pageRange;
+                    app.pdfExportPreferences.pageRange = String(page.name);
+                    doc.exportFile(ExportFormat.pdfType, pdfFile, false, usePreset);
+                    app.pdfExportPreferences.pageRange = oldRange;
+                } catch (e2) {
+                    // 最后回退：导出整个文档
+                    try { doc.exportFile(ExportFormat.pdfType, pdfFile, false, usePreset); } catch (e3) { throw e3; }
+                }
+            }
         } catch (eExport) {
-            // 若上面失败，尝试 simpler: print export
-            try { tmpDoc.exportFile(ExportFormat.pdfType, pdfFile); } catch (e2) { throw e2; }
+            // 恢复可见性再抛出
+            for (var j = 0; j < visStates.length; j++) {
+                try { visStates[j].item.visible = visStates[j].visible; } catch (er) {}
+            }
+            throw eExport;
         }
 
-        // 关闭临时文档不保存
-        try { tmpDoc.close(SaveOptions.NO); } catch (e) {}
-        // 还原原文档为活动文档
-        app.activeDocument = doc;
+        // 恢复可见性
+        for (var j = 0; j < visStates.length; j++) {
+            try { visStates[j].item.visible = visStates[j].visible; } catch (er) {}
+        }
+
         return pdfFile.fullName;
     } catch (e) {
-        try { if (tmpDoc) tmpDoc.close(SaveOptions.NO); } catch (er) {}
         throw e;
     }
 }
@@ -514,25 +541,6 @@ function buildPhotoshopWorkerScript() {
                 // 无法直接打开某些格式，尝试抛出错误
                 throw eOpen;
             }
-
-            // 如果存在导出的矢量文件（来自 InDesign 编组导出），将其以智能对象方式放置到当前打开的背景文档中
-            try {
-                if (params.frameInfo && params.frameInfo.exportedPath) {
-                    var placeFile = File(params.frameInfo.exportedPath);
-                    if (placeFile.exists) {
-                        // 使用 ActionManager 的 Place 命令将文件作为智能对象放入当前文档
-                        var idPlc = charIDToTypeID('Plc ');
-                        var descPlc = new ActionDescriptor();
-                        descPlc.putPath(charIDToTypeID('null'), placeFile);
-                        // 抑制用户交互
-                        executeAction(idPlc, descPlc, DialogModes.NO);
-                        // 放置后，placed layer 将作为当前图层存在，继续执行
-                    }
-                }
-            } catch (ePlace) {
-                // 放置失败则继续，不影响后续文本绘制
-            }
-
             // 如果模式是 Bitmap，则转换为 Grayscale
             try {
                 if (docRef.mode === DocumentMode.BITMAP) {
@@ -541,17 +549,67 @@ function buildPhotoshopWorkerScript() {
             } catch (eMode) {
                 // 忽略不能转换的错误
             }
+            // 如果存在导出的矢量文件（来自 InDesign 编组导出），优先将其作为 PDF 打开并把所有图层复制到当前打开的背景文档中
+            try {
+                if (params.frameInfo && params.frameInfo.isGroup === true && params.frameInfo.exportedPath) {
+                    var placeFile = File(params.frameInfo.exportedPath);
+                    if (placeFile.exists) {
+                        try {
+                            // 打开 PDF 时尽量使用出血裁剪并选择第 1 页、CMYK 模式
+                            var pdfOpts = new PDFOpenOptions();
+                            try { pdfOpts.page = 1; } catch (e) {}
+                            // 尝试使用出血裁剪（不同 PS 版本枚举名可能不同），失败则忽略
+                            try { pdfOpts.crop = CropTo.BLEEDBOX; } catch (e) { try { pdfOpts.crop = CropTo.BLEED; } catch (e2) {} }
+                            try { pdfOpts.mode = OpenDocumentMode.CMYK; } catch (e) {}
+                            // 打开 PDF
+                            var pdfDoc = app.open(placeFile, pdfOpts);
+                            // 尽量设置为 8 位
+                            try { pdfDoc.bitsPerChannel = BitsPerChannelType.EIGHT; } catch (e) {}
+                            // 将 PDF 文档的所有顶级图层复制到目标图片文档（docRef）中
+                            try {
+                                // 使用从上到下复制，保留图层结构
+                                for (var li = 0; li < pdfDoc.layers.length; li++) {
+                                    try { pdfDoc.layers[li].duplicate(docRef, ElementPlacement.PLACEATEND); } catch (eDup) {}
+                                }
+                            } catch (eDupAll) {}
+                            // 关闭 PDF，不保存任何修改
+                            try { pdfDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {}
+                        } catch (eOpenPdf) {
+                            // 如果直接以 PDFOpenOptions 打开失败，回退到原来的 place 方法（smart object）
+                            try {
+                                var idPlc = charIDToTypeID('Plc ');
+                                var descPlc = new ActionDescriptor();
+                                descPlc.putPath(charIDToTypeID('null'), placeFile);
+                                executeAction(idPlc, descPlc, DialogModes.NO);
+                            } catch (ePlace) {}
+                        }
+                    }
+                }
+            } catch (ePlace) {
+                // 放置/复制失败则继续，不影响后续文本绘制
+            }
 
-            // 现在根据 params.frameInfo 尝试创建文本图层
+            // 现在根据 params.frameInfo 尝试创建文本图层，若为编组导出（isGroup === true）则已复制 PDF 图层，不再新建文本图层
             var fi = params.frameInfo || {};
             var contents = '';
             if (fi.contents) contents = fi.contents;
 
-            // 新建文本图层（Point 文本）并尝试使用 page-percentage 将其放置到画布对应位置
-            var textLayer = docRef.artLayers.add();
-            textLayer.kind = LayerKind.TEXT;
-            var ti = textLayer.textItem;
-            try { ti.contents = contents; } catch (e) { ti.contents = contents + ''; }
+            var textLayer = null;
+            var ti = null;
+            if (!(fi.isGroup === true)) {
+                // 新建文本图层（Point 文本）并尝试使用 page-percentage 将其放置到画布对应位置
+                try {
+                    textLayer = docRef.artLayers.add();
+                    textLayer.kind = LayerKind.TEXT;
+                    ti = textLayer.textItem;
+                    try { ti.contents = contents; } catch (e) { ti.contents = contents + ''; }
+                } catch (eNew) {
+                    textLayer = null; ti = null;
+                }
+            } else {
+                // 使用 PDF 导入的图层作为视觉文本层，保持 docRef.activeLayer 为最后一个复制的图层
+                try { /* nothing to create */ } catch (e) {}
+            }
 
             // 计算定位与缩放参数
             var pageBounds = params.pageBounds; // 来自 InDesign: [y1,x1,y2,x2]
@@ -576,6 +634,23 @@ function buildPhotoshopWorkerScript() {
                         var placedW = placedRight - placedLeft; if (placedW === 0) placedW = 1;
                         var placedH = placedBottom - placedTop; if (placedH === 0) placedH = 1;
                         // 计算相对于 placed 的比例
+                                    try {
+                                        // 读取 InDesign 传来的缩放信息，计算与文本相同的放大因子
+                                        var psLinkScale = params.linkScale || {h:100, v:100};
+                                        var psAvgScale = ((psLinkScale.h || 100) + (psLinkScale.v || 100)) / 2;
+                                        var psScaleFactor = 1;
+                                        if (psAvgScale && psAvgScale !== 0) psScaleFactor = 100 / psAvgScale;
+                                        var resizePercent = psScaleFactor * 100; // resize() 使用百分比值
+                                        // 获取当前活动图层并尝试缩放（智能对象层可缩放）
+                                        try {
+                                            var placedLayer = docRef.activeLayer;
+                                            if (placedLayer && placedLayer.resize) {
+                                                placedLayer.resize(resizePercent, resizePercent, AnchorPosition.MIDDLECENTER);
+                                            }
+                                        } catch (eResize) {
+                                            // 若 ActionManager 需要更复杂的变换，可在后续迭代中实现
+                                        }
+                                    } catch (eScale) {}
                         var rx = (frameLeftPts - placedLeft) / placedW;
                         var ry = (frameTopPts - placedTop) / placedH;
                         // 限制在 [0,1]
@@ -618,15 +693,17 @@ function buildPhotoshopWorkerScript() {
             var scaleFactor = 1;
             if (avgScale && avgScale !== 0) scaleFactor = 100 / avgScale;
 
-            // 应用整体样式
-            try {
-                if (baseFontName) ti.font = baseFontName;
-                ti.autoLeadingAmount = 120; // 自动行距
-            } catch (e) {}
-            try {
-                if (baseFontSize) ti.size = baseFontSize * scaleFactor;
-            } catch (e) {}
-            try { if (baseTracking) ti.tracking = baseTracking; } catch (e) {}
+            // 应用整体样式（仅当我们创建了文本图层时）
+            if (ti) {
+                try {
+                    if (baseFontName) ti.font = baseFontName;
+                    ti.autoLeadingAmount = 120; // 自动行距
+                } catch (e) {}
+                try {
+                    if (baseFontSize) ti.size = baseFontSize * scaleFactor;
+                } catch (e) {}
+                try { if (baseTracking) ti.tracking = baseTracking; } catch (e) {}
+            }
             // 颜色
             try {
                 if (baseColor && baseColor.values) {
@@ -652,23 +729,25 @@ function buildPhotoshopWorkerScript() {
                 }
             } catch (e) {}
 
-            // 计算并应用位置
+            // 计算并应用位置（仅当我们创建了文本图层时）
+            var pos = null;
             try {
-                var pos = computePixelPosFromPagePercent(frameRel);
+                pos = computePixelPosFromPagePercent(frameRel);
                 // Photoshop 文本位置通常以像素或文档单位给出，确保为数字数组
-                if (pos && pos.length === 2) {
+                if (ti && pos && pos.length === 2) {
                     ti.position = pos;
                 }
             } catch (e) {}
 
-            // 尽量按字符设置样式：创建多个小文本图层进行模拟（可能很慢），如果字符数量大于 4 则跳过逐字符操作
+            // 尽量按字符设置样式：创建多个小文本图层进行模拟（可能很慢），如果字符数量大于 6 则跳过逐字符操作
             try {
-                if (fi.chars && fi.chars.length > 0 && fi.chars.length <= 6) {
+                // 仅在我们创建了文本图层（非 isGroup）时才尝试逐字符创建
+                if (ti && fi.chars && fi.chars.length > 0 && fi.chars.length <= 6) {
                     // 使用宽度估算与 tracking 模拟字符间距
                     // 先删除上面整体图层，改为逐字符单独图层
-                    try { textLayer.remove(); } catch (e) {}
-                    var startX = pos[0];
-                    var startY = pos[1];
+                    try { if (textLayer) textLayer.remove(); } catch (e) {}
+                    var startX = (pos && pos.length === 2) ? pos[0] : (docRef.width.as('px')/2);
+                    var startY = (pos && pos.length === 2) ? pos[1] : (docRef.height.as('px')/2);
                     // 默认沿 y 方向排列（竖排），如果 orientation === 'horizontal' 则沿 x 方向排列
                     var orient = (fi.orientation && fi.orientation === 'vertical') ? 'vertical' : 'horizontal';
                     var cursorX = startX;
