@@ -83,12 +83,18 @@ function main() {
 
         // 4. 准备参数文件（写入系统临时目录）
         var tempFile = File(Folder.temp + "/id_to_ps_params.jsxdata");
+        // 传递页面 bounds 和链接放置信息以便 Photoshop 能根据页面百分比定位
+        var pageBounds = null;
+        try { pageBounds = currentPage.bounds; } catch (e) { pageBounds = null; }
         var params = {
             docPath: doc.filePath.fullName,
             linkPath: chosenLink.filePath, // 绝对路径字符串
             frameInfo: frameInfo,
             originalFrameId: originalFrameId,
-            platform: $.os // 平台信息
+            platform: $.os, // 平台信息
+            pageBounds: pageBounds,
+            placedBounds: chosenLink.placedBounds || null,
+            linkScale: chosenLink.linkScale || {h:100,v:100}
         };
 
         // 将 params 序列化为可被 Photoshop 解析的字符串（使用 toSource 安全且 ES3 可用）
@@ -117,6 +123,7 @@ function main() {
         var resultFile = File(Folder.temp + "/id_to_ps_result.jsxdata");
         if (resultFile.exists) {
             try {
+                resultFile.encoding = 'UTF-8'
                 resultFile.open('r');
                 var resultText = resultFile.read();
                 resultFile.close();
@@ -188,7 +195,22 @@ function extractTextFrameInfo(textFrame) {
         // 基本检查
         if (!textFrame) return info;
         // 文本内容
-        var contents = textFrame.contents;
+        // 读取并对文本内容做转义，避免换行等字符导致写文件或 eval 解析出错
+        var contents = '';
+        try {
+            var rawContents = textFrame.contents;
+            if (rawContents === undefined || rawContents === null) rawContents = '';
+            contents = String(rawContents);
+            // 先转义反斜杠，再转义换行、回车、制表符与双引号
+            contents = contents.replace(/\\/g, '\\\\');
+            contents = contents.replace(/\r\n/g, '\\n');
+            contents = contents.replace(/\r/g, '\\n');
+            contents = contents.replace(/\n/g, '\\n');
+            contents = contents.replace(/\t/g, '\\t');
+            contents = contents.replace(/"/g, '\\"');
+        } catch (e) {
+            contents = '';
+        }
         if (contents === undefined || contents === "") {
             alert('文本框为空或未包含文本。请填入文字后再运行。');
             throw 'EmptyText';
@@ -247,8 +269,8 @@ function extractTextFrameInfo(textFrame) {
             if (pageWidth === 0) pageWidth = 1;
             if (pageHeight === 0) pageHeight = 1;
 
-            fb.x = (frameLeft - pageLeft) / pageWidth; // 百分比[0-1]
-            fb.y = (frameTop - pageTop) / pageHeight;
+            fb.x = (frameLeft) / pageWidth; // 百分比[0-1]
+            fb.y = (frameTop) / pageHeight;
             fb.w = (frameRight - frameLeft) / pageWidth;
             fb.h = (frameBottom - frameTop) / pageHeight;
         } catch (e) { fb = {x:0,y:0,w:1,h:1}; }
@@ -258,6 +280,17 @@ function extractTextFrameInfo(textFrame) {
         try {
             info.rotation = textFrame.rotationAngle;
         } catch (e) { info.rotation = 0; }
+
+        // 文本方向：横排或竖排（使用 parentStory.storyPreferences.storyOrientation）
+        try {
+            var orient = 'horizontal';
+            try {
+                if (textFrame.parentStory && textFrame.parentStory.storyPreferences && textFrame.parentStory.storyPreferences.storyOrientation === StoryHorizontalOrVertical.VERTICAL) {
+                    orient = 'vertical';
+                }
+            } catch (e) {}
+            info.orientation = orient;
+        } catch (e) { info.orientation = 'horizontal'; }
 
     } catch (e) {
         // 抛出以便上层处理
@@ -367,7 +400,20 @@ function getLinksOnPage(doc, page) {
                 } catch (e) {}
                 // 一些链接的 parentPage 可能为 null，如果 parentPage 等于请求 page 则加入
                 if (parentPage && parentPage === page) {
-                    out.push({name: lk.name, filePath: lk.filePath, linkObj: lk});
+                    // 尝试获取放置项（page item）的缩放信息与边界，以便传递给 Photoshop
+                    var placedScaleH = 100;
+                    var placedScaleV = 100;
+                    var placedBounds = null;
+                    try {
+                        if (lk.parent) {
+                            var p = lk.parent;
+                            // 一些 PageItem（如矩形、图片框）有 horizontalScale / verticalScale
+                            try { if (p.horizontalScale) placedScaleH = p.horizontalScale; } catch (e) {}
+                            try { if (p.verticalScale) placedScaleV = p.verticalScale; } catch (e) {}
+                            try { if (p.geometricBounds) placedBounds = p.geometricBounds; } catch (e) {}
+                        }
+                    } catch (e) {}
+                    out.push({name: lk.name, filePath: lk.filePath, linkObj: lk, linkScale: {h: placedScaleH, v: placedScaleV}, placedBounds: placedBounds});
                 }
             } catch (e) {}
         }
@@ -501,61 +547,132 @@ function buildPhotoshopWorkerScript() {
             var contents = '';
             if (fi.contents) contents = fi.contents;
 
-            // 新建文本图层（Point 文本，置于中心位置的近似位置）
+            // 新建文本图层（Point 文本）并尝试使用 page-percentage 将其放置到画布对应位置
             var textLayer = docRef.artLayers.add();
             textLayer.kind = LayerKind.TEXT;
             var ti = textLayer.textItem;
             try { ti.contents = contents; } catch (e) { ti.contents = contents + ''; }
 
-            // 优先尝试整体设置字体、大小、tracking、颜色（若提供第一个字符信息）
-            if (fi.chars && fi.chars.length > 0) {
-                var firstChar = fi.chars[0];
+            // 计算定位与缩放参数
+            var pageBounds = params.pageBounds; // 来自 InDesign: [y1,x1,y2,x2]
+            var placedBounds = params.placedBounds; // 来自 InDesign 放置框
+            var frameRel = (fi.frameRelative) ? fi.frameRelative : null; // {x,y,w,h}
+            var docWidthPx = docRef.width.as('mm');
+            var docHeightPx = docRef.height.as('mm');
+
+            // 计算目标像素位置的辅助函数：优先在 placedBounds 内计算，否则按整张画布
+            function computePixelPosFromPagePercent(rel) {
+                // rel: {x,y,w,h} 相对于页面
                 try {
-                    // 优先使用 PostScript 名称
-                    if (firstChar.postScriptName && firstChar.postScriptName !== null) ti.font = firstChar.postScriptName;
-                    else if (firstChar.font) ti.font = firstChar.font.toString();
-                } catch (e) {}
-                try { if (firstChar.fontSize) ti.size = firstChar.fontSize; } catch (e) {}
-                try { if (firstChar.tracking) ti.tracking = firstChar.tracking; } catch (e) {}
-                // 颜色映射: 根据捕获的颜色模型尽量转换为 SolidColor
-                try {
-                    if (firstChar.fillColor && firstChar.fillColor.values) {
-                        var c = new SolidColor();
-                        var fc = firstChar.fillColor;
-                        if (fc.model === 'RGB' && fc.values) {
-                            c.rgb.red = fc.values.r;
-                            c.rgb.green = fc.values.g;
-                            c.rgb.blue = fc.values.b;
-                        } else if (fc.model === 'CMYK' && fc.values) {
-                            // 简单 CMYK -> RGB 近似转换（0-100 假定）
-                            var cC = fc.values.c / 100;
-                            var cM = fc.values.m / 100;
-                            var cY = fc.values.y / 100;
-                            var cK = fc.values.k / 100;
-                            var r = 255 * (1 - Math.min(1, cC * (1 - cK) + cK));
-                            var g = 255 * (1 - Math.min(1, cM * (1 - cK) + cK));
-                            var b = 255 * (1 - Math.min(1, cY * (1 - cK) + cK));
-                            c.rgb.red = Math.round(r);
-                            c.rgb.green = Math.round(g);
-                            c.rgb.blue = Math.round(b);
-                        } else {
-                            // 兜底黑色
-                            c.rgb.red = 0; c.rgb.green = 0; c.rgb.blue = 0;
-                        }
-                        ti.color = c;
+                    if (rel && pageBounds && placedBounds) {
+                        var pageTop = pageBounds[0]; var pageLeft = pageBounds[1]; var pageBottom = pageBounds[2]; var pageRight = pageBounds[3];
+                        var pageW = pageRight - pageLeft; if (pageW === 0) pageW = 1;
+                        var pageH = pageBottom - pageTop; if (pageH === 0) pageH = 1;
+                        // 计算 frame 在页面上的绝对位置（点）：frameLeft = pageLeft + rel.x * pageW
+                        var frameLeftPts = pageLeft + rel.x * pageW;
+                        var frameTopPts = pageTop + rel.y * pageH;
+                        // placedBounds: [y1,x1,y2,x2]
+                        var placedTop = placedBounds[0]; var placedLeft = placedBounds[1]; var placedBottom = placedBounds[2]; var placedRight = placedBounds[3];
+                        var placedW = placedRight - placedLeft; if (placedW === 0) placedW = 1;
+                        var placedH = placedBottom - placedTop; if (placedH === 0) placedH = 1;
+                        // 计算相对于 placed 的比例
+                        var rx = (frameLeftPts - placedLeft) / placedW;
+                        var ry = (frameTopPts - placedTop) / placedH;
+                        // 限制在 [0,1]
+                        if (rx < 0) rx = 0; if (rx > 1) rx = 1;
+                        if (ry < 0) ry = 0; if (ry > 1) ry = 1;
+                        // 转为像素
+                        var xPx = rx * docWidthPx;
+                        var yPx = ry * docHeightPx;
+                        return [xPx, yPx];
                     }
                 } catch (e) {}
+                // 兜底：按整个页面百分比映射到画布
+                try {
+                    if (rel) {
+                        var xPx2 = rel.x * docWidthPx;
+                        var yPx2 = rel.y * docHeightPx;
+                        return [xPx2, yPx2];
+                    }
+                } catch (e) {}
+                // 最后兜底居中
+                return [docWidthPx/2, docHeightPx/2];
             }
 
-            // 尽量按字符设置样式：创建多个小文本图层进行模拟（可能很慢），如果字符数量大于 100 则跳过逐字符操作
+            // 优先从第一个字符获得样式用于整体设置
+            var baseFontSize = null;
+            var baseFontName = null;
+            var baseTracking = null;
+            var baseColor = null;
+            if (fi.chars && fi.chars.length > 0) {
+                var firstChar = fi.chars[0];
+                try { if (firstChar.postScriptName) baseFontName = firstChar.postScriptName; else if (firstChar.font) baseFontName = firstChar.font; } catch (e) {}
+                try { if (firstChar.fontSize) baseFontSize = firstChar.fontSize; } catch (e) {}
+                try { if (firstChar.tracking) baseTracking = firstChar.tracking; } catch (e) {}
+                try { if (firstChar.fillColor) baseColor = firstChar.fillColor; } catch (e) {}
+            }
+
+            // 考虑 InDesign 中链接的缩放比例：在 ID 中放置为 60% 时，我们需要把字体乘以 (100/60) 才能在原图上显示同样视觉大小
+            var linkScale = params.linkScale || {h:100,v:100};
+            var avgScale = ( (linkScale.h||100) + (linkScale.v||100) ) / 2;
+            var scaleFactor = 1;
+            if (avgScale && avgScale !== 0) scaleFactor = 100 / avgScale;
+
+            // 应用整体样式
             try {
-                if (fi.chars && fi.chars.length > 0 && fi.chars.length <= 100) {
+                if (baseFontName) ti.font = baseFontName;
+                ti.autoLeadingAmount = 120; // 自动行距
+            } catch (e) {}
+            try {
+                if (baseFontSize) ti.size = baseFontSize * scaleFactor;
+            } catch (e) {}
+            try { if (baseTracking) ti.tracking = baseTracking; } catch (e) {}
+            // 颜色
+            try {
+                if (baseColor && baseColor.values) {
+                    var c = new SolidColor();
+                    var fc = baseColor;
+                    if (fc.model === 'RGB' && fc.values) {
+                        c.rgb.red = fc.values.r;
+                        c.rgb.green = fc.values.g;
+                        c.rgb.blue = fc.values.b;
+                    } else if (fc.model === 'CMYK' && fc.values) {
+                        var cC = fc.values.c / 100;
+                        var cM = fc.values.m / 100;
+                        var cY = fc.values.y / 100;
+                        var cK = fc.values.k / 100;
+                        var r = 255 * (1 - Math.min(1, cC * (1 - cK) + cK));
+                        var g = 255 * (1 - Math.min(1, cM * (1 - cK) + cK));
+                        var b = 255 * (1 - Math.min(1, cY * (1 - cK) + cK));
+                        c.rgb.red = Math.round(r);
+                        c.rgb.green = Math.round(g);
+                        c.rgb.blue = Math.round(b);
+                    } else { c.rgb.red = 0; c.rgb.green = 0; c.rgb.blue = 0; }
+                    ti.color = c;
+                }
+            } catch (e) {}
+
+            // 计算并应用位置
+            try {
+                var pos = computePixelPosFromPagePercent(frameRel);
+                // Photoshop 文本位置通常以像素或文档单位给出，确保为数字数组
+                if (pos && pos.length === 2) {
+                    ti.position = pos;
+                }
+            } catch (e) {}
+
+            // 尽量按字符设置样式：创建多个小文本图层进行模拟（可能很慢），如果字符数量大于 4 则跳过逐字符操作
+            try {
+                if (fi.chars && fi.chars.length > 0 && fi.chars.length <= 6) {
                     // 使用宽度估算与 tracking 模拟字符间距
                     // 先删除上面整体图层，改为逐字符单独图层
                     try { textLayer.remove(); } catch (e) {}
-                    var startX = docRef.width.as('px') / 2; // 简单居中
-                    var startY = docRef.height.as('px') / 2;
-                    var xPos = startX;
+                    var startX = pos[0];
+                    var startY = pos[1];
+                    // 默认沿 y 方向排列（竖排），如果 orientation === 'horizontal' 则沿 x 方向排列
+                    var orient = (fi.orientation && fi.orientation === 'vertical') ? 'vertical' : 'horizontal';
+                    var cursorX = startX;
+                    var cursorY = startY;
                     for (var i = 0; i < fi.chars.length; i++) {
                         var ch = fi.chars[i];
                         var tl = docRef.artLayers.add();
@@ -563,12 +680,18 @@ function buildPhotoshopWorkerScript() {
                         var titem = tl.textItem;
                         titem.contents = ch.character || '';
                         try { if (ch.postScriptName) titem.font = ch.postScriptName; else if (ch.font) titem.font = ch.font; } catch (e) {}
-                        try { if (ch.fontSize) titem.size = ch.fontSize; } catch (e) {}
-                        try { titem.position = [xPos, startY]; } catch (e) {}
-                        // 估算宽度，advance by font size/2 + tracking
+                        try { if (ch.fontSize) titem.size = ch.fontSize * scaleFactor; } catch (e) {}
+                        try { titem.position = [cursorX, cursorY]; } catch (e) {}
+                        // 估算 advance：基于字体大小和 tracking
                         var adv = (ch.fontSize || 12) * 0.6;
                         if (ch.tracking) adv += ch.tracking/20;
-                        xPos += adv;
+                        if (orient === 'vertical') {
+                            // 竖排：每个字沿 Y 增加
+                            cursorY += adv;
+                        } else {
+                            // 横排：每个字沿 X 增加（向右）
+                            cursorX += adv;
+                        }
                     }
                 }
             } catch (eCharLayer) {
@@ -607,6 +730,7 @@ function buildPhotoshopWorkerScript() {
 
             // 将结果写回结果文件
             var resultFile = File(Folder.temp + '/id_to_ps_result.jsxdata');
+            resultFile.encoding = 'UTF-8';
             resultFile.open('w');
             resultFile.write('{"newPath": "' + newPath.replace(/\\/g, '\\\\') + '"}');
             resultFile.close();
@@ -615,6 +739,7 @@ function buildPhotoshopWorkerScript() {
             // 写入失败结果并抛出
             try {
                 var rf = File(Folder.temp + '/id_to_ps_result.jsxdata');
+                rf.encoding = 'UTF-8';
                 rf.open('w');
                 rf.write('{"error": "' + String(e).replace(/\\/g, '\\\\') + '"}');
                 rf.close();
