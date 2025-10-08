@@ -118,3 +118,246 @@ function KTUUnLockAllItems(aDocument) {
 function KTUApplyMasterToPage(aPage,aMaster) {
     aPage.appliedMaster = aMaster
 }
+
+
+// 获取需要处理的链接
+function getLinksToProcess(doc, selectionType) {
+    var links = [];
+    
+    if (selectionType == "current") {
+        // 处理当前页面
+        var page = doc.layoutWindows[0].activePage;
+        var pageItems = page.allPageItems;
+        
+        for (var i = 0; i < pageItems.length; i++) {
+            if (pageItems[i].hasOwnProperty("images") && pageItems[i].images.length > 0) {
+                var image = pageItems[i].images[0];
+                if (image.hasOwnProperty("itemLink") && isSupportedImage(image.itemLink)) {
+                    links.push(image.itemLink);
+                }
+            }
+        }
+    } else if (selectionType == "selected") {
+        // 处理当前选中的链接
+        links = getSelectedLinksFromClipboard(doc);
+    } else {
+        // 处理整个文档
+        var allLinks = doc.links;
+        for (var i = 0; i < allLinks.length; i++) {
+            if (isSupportedImage(allLinks[i])) {
+                links.push(allLinks[i]);
+            }
+        }
+    }
+    
+    return links;
+}
+
+// 通过剪贴板获取选中的链接
+function getSelectedLinksFromClipboard(doc) {
+    var links = [];
+    
+    // 复制选中的链接信息
+    try {
+        var action = app.menuActions.itemByName("复制选定链接的信息");
+        if (!action.isValid) action = app.menuActions.itemByName("Copy Link Info");
+        if (action.isValid && action.enabled) action.invoke();
+        else {
+            alert("找不到菜单命令或者无法点击。");
+            return links;
+        }
+    } catch (error) {
+        alert("请先在链接窗口中选中链接：" + error);
+    }
+    
+    // 等待剪贴板更新
+    sleepWithEvents(1000);
+    
+    // 获取剪贴板内容
+    var clipboardText = getClipboardText();
+    
+    if (!clipboardText) {
+        alert("无法获取剪贴板内容");
+        return links;
+    }
+    
+    // 解析剪贴板内容，提取文件名
+    var filenames = parseClipboardContent(clipboardText);
+    
+    if (filenames.length === 0) {
+        alert("未从剪贴板中解析到文件名");
+        return links;
+    }
+    
+    // 根据文件名查找对应的链接
+    var allLinks = doc.links;
+    for (var i = 0; i < filenames.length; i++) {
+        var filename = filenames[i];
+        for (var j = 0; j < allLinks.length; j++) {
+            var link = allLinks[j];
+            if (isSupportedImage(link)) {
+                var linkFilename = getFileNameFromPath(link.filePath);
+                if (linkFilename === filename) {
+                    links.push(link);
+                    break;
+                }
+            }
+        }
+    }
+    
+    return links;
+}
+
+// 从剪贴板内容中解析文件名
+function parseClipboardContent(content) {
+    var filenames = [];
+    var lines = content.split('\n');
+    
+    // 跳过标题行
+    var startIndex = 1;
+    if (lines.length > 1 && lines[0].indexOf("名称") !== -1 && lines[0].indexOf("状态") !== -1) {
+        startIndex = 1;
+    } else {
+        startIndex = 0;
+    }
+    
+    for (var i = startIndex; i < lines.length; i++) {
+        var line = lines[i];
+        if (line) {
+            // 提取第一列作为文件名
+            var columns = line.split('\t');
+            if (columns.length > 0 && columns[0]) {
+                filenames.push(columns[0]);
+            }
+        }
+    }
+    
+    return filenames;
+}
+
+// 获取路径中的文件名
+function getFileNameFromPath(filePath) {
+    if (!filePath) return "";
+    
+    var parts = filePath.split(/[\/\\]/);
+    var filename = parts[parts.length - 1];
+    
+    return filename;
+}
+
+// 获取剪贴板文本内容
+function getClipboardText() {
+    try {
+        // 创建临时文件来获取剪贴板内容
+        var tempFile = new File(Folder.temp.absoluteURI + "/clipboard_temp.txt");
+        if (tempFile.exists) {
+            tempFile.remove();
+        }
+        
+        if (Folder.fs === "Windows") {
+            // 使用系统命令获取剪贴板内容（Windows）
+            var scriptFile = new File(Folder.temp.absoluteURI + "/get_clipboard.vbs");
+            var scriptContent = 'Set objHTML = CreateObject("htmlfile")\n' +
+                               'strContent = objHTML.ParentWindow.ClipboardData.GetData("text")\n' +
+                               'Set objFSO = CreateObject("Scripting.FileSystemObject")\n' +
+                               'Set objFile = objFSO.CreateTextFile("' + tempFile.fsName.replace(/\\/g, "\\\\") + '", True)\n' +
+                               'objFile.Write strContent\n' +
+                               'objFile.Close\n';
+            
+            scriptFile.open("w");
+            scriptFile.write(scriptContent);
+            scriptFile.close();
+            
+            scriptFile.execute();
+            sleepWithEvents(1000);
+            
+            if (tempFile.exists) {
+                tempFile.open("r");
+                var content = tempFile.read();
+                tempFile.close();
+                tempFile.remove();
+                scriptFile.remove();
+                return content;
+            }
+        } else if (Folder.fs === "Macintosh") {
+            // 使用AppleScript获取剪贴板内容（Mac）
+            var scriptFile = new File(Folder.temp.absoluteURI + "/get_clipboard.scpt");
+            var scriptContent = 'set clipboardText to the clipboard as string\n' +
+                               'set fileRef to open for access POSIX file "' + tempFile.fsName + '" with write permission\n' +
+                               'set eof fileRef to 0\n' +
+                               'write clipboardText to fileRef\n' +
+                               'close access fileRef';
+            
+            scriptFile.open("w");
+            scriptFile.write(scriptContent);
+            scriptFile.close();
+            
+            // 执行AppleScript
+            var result = app.doScript("run script (read file \"" + scriptFile.fsName + "\" as alias)", 
+                                      ScriptLanguage.APPLESCRIPT_LANGUAGE);
+            
+            sleepWithEvents(1000);
+            
+            if (tempFile.exists) {
+                tempFile.open("r");
+                var content = tempFile.read();
+                tempFile.close();
+                tempFile.remove();
+                scriptFile.remove();
+                return content;
+            }
+        }
+        return "";
+    } catch (e) {
+        $.writeln("获取剪贴板内容时出错: " + e.message);
+        return "";
+    }
+}
+
+// 检查是否为支持的图片格式
+function isSupportedImage(link) {
+    if (!link) return false;
+    
+    var filePath = link.filePath;
+    if (!filePath) return false;
+    
+    filePath = filePath.toLowerCase();
+    
+    // 检查是否为psd或tif格式
+    if (filePath.substr(-4) == ".psd" || filePath.substr(-4) == ".tif" || 
+        filePath.substr(-5) == ".tiff") {
+        return true;
+    }
+    
+    return false;
+}
+
+// 检查图片是否为位图模式
+function isBitmapImage(link) {
+    try {
+        // 获取链接对应的图片对象
+        var image = link.parent;
+        if (image && image.hasOwnProperty('imageTypeName')) {
+            // 如果能直接获取到imageTypeName，可以检查是否为Bitmap
+            // 注意：这可能需要根据实际API调整
+            return image['space'] == "Bitmap"||image['space'] == "黑白";
+        }
+        // 如果无法直接判断，返回true以保持原有逻辑
+        return true;
+    } catch (e) {
+        $.writeln("检查图片模式时出错: " + e.message);
+        // 出错时返回true，保持原有逻辑
+        return true;
+    }
+}
+
+// 带事件处理的延迟函数
+function sleepWithEvents(milliseconds) {
+    var start = new Date().getTime();
+    var now = start;
+    while (now - start < milliseconds) {
+        // 处理事件队列，保持界面响应
+        app.scriptPreferences.enableRedraw = true;
+        now = new Date().getTime();
+    }
+}

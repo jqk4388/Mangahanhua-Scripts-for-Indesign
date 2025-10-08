@@ -1,8 +1,9 @@
 // LP翻译稿处理工具
 // 该脚本用于处理LP翻译稿，将文本插入到InDesign文档中，并根据分组应用样式
 // 作者：几千块
-// 日期：20250920
+// 日期：20251008
 var version = "2.2";
+#include "../Library/KTUlib.jsx"
 // 声明全局变量
 var totalPages = 0;
 var doc = app.activeDocument;
@@ -662,7 +663,7 @@ function showThirdInterface(filePathInput) {
         return null;
     }
     if (result === 1) {
-        processStart(filePathInput);
+        KTUDoScriptAsUndoable(function() {processStart(filePathInput)}, "LP翻译稿导入");
     }
 }
 

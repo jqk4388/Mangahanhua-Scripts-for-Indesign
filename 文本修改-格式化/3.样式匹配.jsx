@@ -1,4 +1,5 @@
 var version = "1.21";
+#include "../Library/KTUlib.jsx"
 
 // 主入口
 function main() {
@@ -49,9 +50,9 @@ function main() {
             var paraStyle = styleCheck.paraStyle;
             saveConfigFile(config);
             // 应用样式
-            applyStyles(textFrames, config, charStyle, paraStyle);
+            KTUDoScriptAsUndoable(function() {applyStyles(textFrames, config, charStyle, paraStyle)} , "样式匹配");
             //用Grep查找清除花括号{}中的内容
-            ClearBrackets(textFrames);
+            KTUDoScriptAsUndoable(function() {ClearBrackets(textFrames)}, "清除花括号");
         }
 
     } catch (e) {
