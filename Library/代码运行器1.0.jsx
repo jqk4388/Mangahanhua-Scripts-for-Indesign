@@ -1,19 +1,22 @@
+#targetengine "session"
+var win;
 
 // 创建窗口界面
 function createWindow() {
-    var win = new Window("dialog", "代码运行器"); 
+    // 注意：不要在此函数外直接声明顶层窗口变量，函数仅返回新建的 palette 实例
+    var _win = new Window("palette", "代码运行器"); 
 
     // 创建代码输入区域
-    win.add("statictext", undefined, "代码粘贴区域：");
-    var codeInput = win.add("edittext", [0, 0, 400, 200], "", { multiline: true });
+    _win.add("statictext", undefined, "代码粘贴区域：");
+    var codeInput = _win.add("edittext", [0, 0, 400, 200], "", { multiline: true });
 
     // 显示运行时间
-    var timeGroup = win.add("group");
+    var timeGroup = _win.add("group");
     timeGroup.add("statictext", undefined, "运行时间：");
     var timeDisplay = timeGroup.add("statictext", undefined, "0s");
 
     // 按钮组
-    var buttonGroup = win.add("group");
+    var buttonGroup = _win.add("group");
     buttonGroup.orientation = "row";
 
     // 运行按钮
@@ -29,7 +32,7 @@ function createWindow() {
         }
     };
 
-    // 保存按钮
+    // 保存按钮（使用 dialog 进行文件名输入，保持模态保存对话以保证用户输入）
     var saveButton = buttonGroup.add("button", undefined, "保存");
     saveButton.onClick = function () {
         try {
@@ -90,12 +93,12 @@ function createWindow() {
     // 关闭按钮
     var closeButton = buttonGroup.add("button", undefined, "关闭");
     closeButton.onClick = function () {
-        win.close();
+        _win.close();
     };
 
-    return win;
+    return _win;
 }
 
 // 调色板类型的窗口不能有主函数
-var window = createWindow();
+win = createWindow();
 window.show();
