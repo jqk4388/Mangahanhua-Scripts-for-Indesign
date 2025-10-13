@@ -1,8 +1,8 @@
 // LP翻译稿处理工具
 // 该脚本用于处理LP翻译稿，将文本插入到InDesign文档中，并根据分组应用样式
 // 作者：几千块
-// 日期：20251008
-var version = "2.2";
+// 日期：20251013
+var version = "2.3";
 #include "../Library/KTUlib.jsx"
 // 声明全局变量
 var totalPages = 0;
@@ -96,16 +96,41 @@ function parseLines(lines, isSingleLineMode) {
 
             // 根据模式处理文本内容
             if (isSingleLineMode || textContent.length === 1) {
+                //从textContent[0]中提取大括号{}内的内容，包括大括号本身
+                    var braceMatch="";
+                    braceMatch = textContent[0].match(/\{.*?\}/);
                 // 单行模式拆分成多个文本框
                 for (var k = 0; k < textContent.length; k++) {
-                    var entry = {
-                        pageImage: extractPageNumbers(pageNameArr)[0],
-                        pageNumber: pageNumber,
-                        position: [baseX - k * 0.03, baseY + k * 0.03],
-                        group: group,
-                        text: textContent[k]
-                    };
-                    entries.push(entry);
+                    if (braceMatch){
+                        if (k==0) {
+                            var entry = {
+                                pageImage: extractPageNumbers(pageNameArr)[0],
+                                pageNumber: pageNumber,
+                                position: [baseX - k * 0.03, baseY + k * 0.03],
+                                group: group,
+                                text: textContent[k]
+                            };
+                            entries.push(entry);
+                        }                    
+                        if (k>0) {
+                            var entry = {
+                                pageImage: extractPageNumbers(pageNameArr)[0],
+                                pageNumber: pageNumber,
+                                position: [baseX - k * 0.03, baseY + k * 0.03],
+                                group: group,
+                                text: braceMatch + textContent[k]
+                            };
+                            entries.push(entry);}
+                    }else {
+                        var entry = {
+                            pageImage: extractPageNumbers(pageNameArr)[0],
+                            pageNumber: pageNumber,
+                            position: [baseX - k * 0.03, baseY + k * 0.03],
+                            group: group,
+                            text: textContent[k]
+                        };
+                        entries.push(entry);
+                    }
                 }
             } else {
                 // 多行模式合并成一个文本框
