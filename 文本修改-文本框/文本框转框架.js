@@ -95,7 +95,7 @@ function getGroupBounds(frames) {
 // 将剪切的内容粘贴到指定框架内
 function pasteContentIntoFrame(targetFrame) {
     app.select(targetFrame);
-    app.pasteInto (targetFrame);
+    app.pasteInto(targetFrame);
 }
 
 // 运行主函数
