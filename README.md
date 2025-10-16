@@ -122,6 +122,9 @@
 | 样式修改-文本特效/第一行水平缩小Squeeze Line.jsx | 缩小第一行水平比例 |
 | 样式修改-文本特效/随机错位Jumble Characters.jsx | 创建随机错位文字效果 |
 | 样式修改-文本特效/AI特效-粗糙化.jsx | ID中选中一个文本框在AI中执行粗糙化特效，原文本框隐藏 |
+| 样式修改-文本特效/AI特效-黑底雕.jsx | 黑底雕特效，模仿字体ShinGoMin-Emboss/ShinMGoMin-Emboss |
+| 样式修改-文本特效/ID特效-白底雕.jsx | 白底雕特效，模仿字体RampartTL |
+| 样式修改-文本特效/ID特效-白底雕斜.jsx | 白底雕特效，模仿字体Rampart/Shadow |
 | 样式修改-文本特效/PS特效-背景字.jsx | ID中选中一个文本框或编组用PS复制到链接图里做背景字补图  |
 
 ![文字特效示例](样式修改-文本特效/Text%20Design%20Examples.png)
