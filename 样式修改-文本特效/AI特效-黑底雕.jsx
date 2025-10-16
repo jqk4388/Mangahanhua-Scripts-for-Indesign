@@ -2,7 +2,7 @@
 /**
  * 主函数：实现AI黑底雕效果
  */
-function aiRoughenEffect() {
+function aiBlackWEffect() {
     try {
         // 检查是否有选中的文本框
         if (app.selection.length === 0) {
@@ -553,11 +553,11 @@ function illustratorBlackWordScript(filePath, fontSize) {
         var option2 = {
                 scaleHorzPercent: 100,
                 scaleVertPercent: 100,
-                moveHorzPts: 0.05,
-                moveVertPts: 0.05,
+                moveHorzPts: 0.0045*fontSize,
+                moveVertPts: 0.0045*fontSize,
                 rotateDegrees: 0,
                 randomize: false,
-                numberOfCopies: fontSize,
+                numberOfCopies: Math.ceil(fontSize),
                 transformPoint: Transformation.CENTER,  /* must be a Transformation constant, eg. Transformation.BOTTOMRIGHT */
                 scaleStrokes: false,
                 transformPatterns: true,
@@ -664,7 +664,7 @@ function blackWInIllustrator(filePath,fontSize) {
         bt.send();
         
         // 等待一段时间确保处理完成
-        sleepWithEvents(3000);
+        sleepWithEvents(5000);
         return result;
     } catch (err) {
         alert("调用Illustrator处理时出错: " + err.description + "\n将继续执行后续操作");
@@ -699,4 +699,4 @@ function placeAIFile(page, filePath) {
 }
 
 // 执行主函数
-aiRoughenEffect();
+KTUDoScriptAsUndoable(function() { aiBlackWEffect(); }, "ID黑底雕特效");

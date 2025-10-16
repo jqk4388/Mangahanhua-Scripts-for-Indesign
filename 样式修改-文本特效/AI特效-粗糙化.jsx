@@ -2,7 +2,7 @@
 /**
  * 主函数：实现AI粗糙化效果
  */
-function aiRoughenEffect() {
+function aiBlackWEffect() {
     try {
         // 检查是否有选中的文本框
         if (app.selection.length === 0) {
@@ -538,4 +538,4 @@ function placeAIFile(page, filePath) {
 }
 
 // 执行主函数
-aiRoughenEffect();
+KTUDoScriptAsUndoable(function() { aiBlackWEffect(); }, "AI粗糙化特效");
