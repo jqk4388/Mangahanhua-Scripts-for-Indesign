@@ -699,4 +699,4 @@ function placeAIFile(page, filePath) {
 }
 
 // 执行主函数
-KTUDoScriptAsUndoable(function() { aiBlackWEffect(); }, "ID黑底雕特效");
+KTUDoScriptAsUndoable(function() { aiBlackWEffect(); }, "AI黑底雕特效");

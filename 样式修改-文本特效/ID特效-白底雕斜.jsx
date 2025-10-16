@@ -277,7 +277,7 @@
 	}
 
 	// 运行主程序
-	KTUDoScriptAsUndoable(function() { main(); }, "白底雕斜特效");
+	KTUDoScriptAsUndoable(function() { main(); }, "ID白底雕斜特效");
 
 })();
 

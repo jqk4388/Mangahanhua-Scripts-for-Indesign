@@ -1,10 +1,4 @@
-/*
-  PS特效-背景字.jsx
-  说明: 将选中文本框的文字信息传入 Photoshop，在图像上重新排版文字并保存为分层PSD（或覆盖原文件），然后在 InDesign 中更新链接。
-  要求: 兼容 ExtendScript (ES3 风格)，大量注释，所有功能封装为函数，使用 try-catch 捕获异常。
-*/
-
-// 主入口
+#include "../Library/KTUlib.jsx"// 主入口
 function main() {
     try {
         // 1. 检查环境与文档
@@ -915,4 +909,4 @@ function tryLaunchPhotoshop() {
 }
 
 // 运行主函数
-try { main(); } catch (e) { alert('致命错误: ' + e); }
+KTUDoScriptAsUndoable(function() { main(); }, "PS背景字置入");
