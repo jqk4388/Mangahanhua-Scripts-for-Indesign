@@ -18,50 +18,6 @@ function convertBitmapToGrayscale() {
     processLinks(links);
 }
 
-// 获取用户选择的处理范围
-function getUserSelection() {
-    var dialog = new Window("dialog", "选择处理范围");
-    dialog.orientation = "column";
-    dialog.alignChildren = "left";
-    
-    var text = dialog.add("statictext", undefined, "请选择处理范围:");
-    
-    var rg = dialog.add("group");
-    rg.orientation = "row";
-    var currentPageRadio = rg.add("radiobutton", undefined, "仅当前页面");
-    var allDocumentRadio = rg.add("radiobutton", undefined, "整个文档");
-    var selectedLinksRadio = rg.add("radiobutton", undefined, "当前选中的链接");
-    currentPageRadio.value = true;
-    
-    var buttonGroup = dialog.add("group");
-    buttonGroup.orientation = "row";
-    buttonGroup.alignment = "center";
-    var okBtn = buttonGroup.add("button", undefined, "确定");
-    var cancelBtn = buttonGroup.add("button", undefined, "取消");
-    
-    var result = null;
-    
-    okBtn.onClick = function() {
-        if (currentPageRadio.value) {
-            result = "current";
-        } else if (allDocumentRadio.value) {
-            result = "document";
-        } else if (selectedLinksRadio.value) {
-            result = "selected";
-        }
-        dialog.close();
-    };
-    
-    cancelBtn.onClick = function() {
-        result = null;
-        dialog.close();
-    };
-    
-    dialog.show();
-    
-    return result;
-}
-
 // 处理链接图片
 function processLinks(links) {
     // 创建进度条窗口

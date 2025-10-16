@@ -537,9 +537,9 @@ function illustratorBlackWordScript(filePath, fontSize) {
         var c1 = new CMYKColor(); c1.black = 100;
         a.forEach(function(item){item.fillColor = c1;});
         var option1 = {
-                offset: 0.011*fontSize,
+                offset: 0.0085*fontSize,
                 joinType: 2,  // joinTypes: 0 = Round, 1 = Bevel , 2 = Miter
-                miterLimit: 2,
+                miterLimit: 4,
                 expandAppearance: false
             }
         LE_OffsetPath(layer1, option1);
@@ -553,8 +553,8 @@ function illustratorBlackWordScript(filePath, fontSize) {
         var option2 = {
                 scaleHorzPercent: 100,
                 scaleVertPercent: 100,
-                moveHorzPts: 0.0045*fontSize,
-                moveVertPts: 0.0045*fontSize,
+                moveHorzPts: 0.0068*fontSize,
+                moveVertPts: 0.0068*fontSize,
                 rotateDegrees: 0,
                 randomize: false,
                 numberOfCopies: Math.ceil(fontSize),

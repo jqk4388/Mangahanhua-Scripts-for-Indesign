@@ -1,3 +1,4 @@
+#include "../Library/KTUlib.jsx"
 var kDebugSampleScriptName = "链接图隐藏图层 ネーム.jsx";
 // 主函数
 function main() {
@@ -8,23 +9,21 @@ function main() {
             return;
         }
         
-        var myDocument = app.activeDocument;
-        
         // 获取脚本文件名以确定要隐藏的图层名
         var scriptName = getScriptName();
         var layerName = getLayerNameFromScriptName(scriptName);
         $.writeln("图层名：" + layerName);
         
-        // 创建对话框询问用户处理范围
-        var scope = getUserScopeSelection();
-        if (scope === null) {
+        var doc = app.activeDocument;
+        var selectionType = getUserSelection();
+        
+        if (selectionType == null) {
             return; // 用户取消操作
         }
         
-        // 获取链接图像
-        var links = getLinksToProcess(myDocument, scope);
+        var links = getLinksToProcess(doc, selectionType);
         
-        if (links.length === 0) {
+        if (links.length == 0) {
             alert("没有找到符合条件的链接图片");
             return;
         }
@@ -62,78 +61,6 @@ function getLayerNameFromScriptName(scriptName) {
     var nameParts = nameWithoutExtension.split(" ");
     // 获取最后一个元素作为图层名
     return nameParts[nameParts.length - 1];
-}
-
-// 获取用户选择的处理范围
-function getUserScopeSelection() {
-    var dialog = new Window("dialog", "选择处理范围");
-    dialog.orientation = "column";
-    dialog.alignChildren = "left";
-    
-    var text = dialog.add("statictext", undefined, "请选择处理范围:");
-    
-    var rg = dialog.add("group");
-    rg.orientation = "row";
-    var currentPageRadio = rg.add("radiobutton", undefined, "仅当前页面");
-    var allDocumentRadio = rg.add("radiobutton", undefined, "整个文档");
-    currentPageRadio.value = true;
-    
-    var buttonGroup = dialog.add("group");
-    buttonGroup.orientation = "row";
-    buttonGroup.alignment = "center";
-    var okBtn = buttonGroup.add("button", undefined, "确定");
-    var cancelBtn = buttonGroup.add("button", undefined, "取消");
-    
-    var result = null;
-    
-    okBtn.onClick = function() {
-        result = currentPageRadio.value ? "current" : "document";
-        dialog.close();
-    };
-    
-    cancelBtn.onClick = function() {
-        result = null;
-        dialog.close();
-    };
-    
-    dialog.show();
-    
-    return result;
-}
-
-// 获取需要处理的链接
-function getLinksToProcess(doc, scope) {
-    var links = [];
-    
-    if (scope == "current") {
-        // 处理当前页面
-        var page = doc.layoutWindows[0].activePage;
-        var pageItems = page.allPageItems;
-        
-        for (var i = 0; i < pageItems.length; i++) {
-            if (pageItems[i].hasOwnProperty("images") && pageItems[i].images.length > 0) {
-                var image = pageItems[i].images[0];
-                if (image.hasOwnProperty("itemLink")) {
-                    // 只获取PSD链接
-                    var link = image.itemLink;
-                    if (isPSDLink(link)) {
-                        links.push(link);
-                    }
-                }
-            }
-        }
-    } else {
-        // 处理整个文档
-        var allLinks = doc.links;
-        for (var i = 0; i < allLinks.length; i++) {
-            // 只获取PSD链接
-            if (isPSDLink(allLinks[i])) {
-                links.push(allLinks[i]);
-            }
-        }
-    }
-    
-    return links;
 }
 
 // 检查链接是否为PSD格式
@@ -178,4 +105,4 @@ function processLink(link, layerName) {
 }
 
 // 执行主函数
-main();
+KTUDoScriptAsUndoable(function() { main(); }, "显示/隐藏图层");

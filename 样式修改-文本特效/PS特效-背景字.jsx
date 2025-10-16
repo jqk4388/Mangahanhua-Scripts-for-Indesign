@@ -1,4 +1,4 @@
-#include "../Library/KTUlib.jsx"// 主入口
+#include "../Library/KTUlib.jsx"
 function main() {
     try {
         // 1. 检查环境与文档
@@ -33,7 +33,6 @@ function main() {
             // 隐藏文本框
             hideItem(first);
         } else if (first instanceof Group) {
-            // 处理编组: 尝试导出编组为一个矢量文件（PDF）以便 Photoshop place 为智能对象
             frameInfo = { isGroup: true };
             originalFrameId = first.id;
             // 导出编组为临时 PDF
@@ -442,25 +441,52 @@ function getLinksOnPage(doc, page) {
     return out;
 }
 
-// 弹窗让用户选择要处理的链接（返回选中的 link 对象）
+// 弹窗让用户选择要处理的链接
 function promptUserToChooseLink(links) {
     try {
-        // 使用 ScriptUI 构建简单列表
         var w = new Window('dialog', '选择链接图片');
-        var list = w.add('listbox', undefined, [], {multiselect:false});
-        list.preferredSize = [400, 200];
+        var list = w.add('listbox', undefined, [], {multiselect: false});
+        list.preferredSize = [500, 240];
+
         for (var i = 0; i < links.length; i++) {
-            list.add('item', links[i].name + '  —  ' + links[i].filePath);
+            var item = list.add('item', links[i].name + '  —  ' + links[i].filePath);
+            item.linkIndex = i;
         }
+
         var btnGroup = w.add('group');
-        btnGroup.orientation = 'row';
+        btnGroup.alignment = 'right';
         var okBtn = btnGroup.add('button', undefined, '确定');
         var cancelBtn = btnGroup.add('button', undefined, '取消');
-        if (w.show() === 1) {
+
+        // 初始禁用确定按钮，直到选中一项
+        okBtn.enabled = false;
+        w.defaultElement = okBtn;
+        w.cancelElement = cancelBtn;
+
+        list.onChange = function () {
+            okBtn.enabled = !!this.selection;
+        };
+
+        // 双击列表项也等同于点击确定
+        list.onDoubleClick = function () {
+            if (this.selection) w.close(1);
+        };
+
+        okBtn.onClick = function () {
+            w.close(1);
+        };
+        cancelBtn.onClick = function () {
+            w.close(0);
+        };
+
+        var res = w.show();
+        if (res === 1) {
             var selIndex = list.selection ? list.selection.index : -1;
             if (selIndex >= 0) return links[selIndex];
         }
-    } catch (e) {}
+    } catch (e) {
+        // 忽略错误并返回 null
+    }
     return null;
 }
 

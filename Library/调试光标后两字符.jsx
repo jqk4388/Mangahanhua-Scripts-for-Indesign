@@ -1,4 +1,4 @@
-#target = "Adobe InDesign";
+#targetengine "session"
 // 调试脚本 - 比较两个字符的属性
 try {
     // 检查是否有选中的文本
