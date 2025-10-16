@@ -67,7 +67,7 @@
 			var tf1 = tf.duplicate();
 			tf.visible = false;
 			// 1. 修改字间距为 25（Tracking）并适合框
-			applyTrackingAndFit(tf1, 25);
+			applyTrackingAndFit(tf1, 17*tf['parentStory']['pointSize']);
 
 			// 2. 修改文字描边为黑色0.25pt，斜接连接，斜接限制2x，填充白色
 			applyTextStrokeAndFill(doc, tf1, 0.25);

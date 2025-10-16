@@ -225,6 +225,39 @@ function getByID(collection, id) {
     }
     return null;
 }
+
+	/**
+	 * 修改文本框的 Tracking（字距），并如果有 overset（溢流）则 fit
+	 * @param {TextFrame} tf
+	 * @param {Number} trackingValue - 文字跟踪（追踪），单位 InDesign 跟踪值
+	 */
+	function applyTrackingAndFit(tf, trackingValue) {
+		try {
+			if (!tf || !tf.texts || tf.texts.length === 0) return;
+			var t = tf.texts[0];
+			// 对全文字符设置追踪（tracking）
+			try {
+				t.tracking = trackingValue;
+			} catch (e) {
+				// 如果追踪属性不可用，则按字符遍历
+				for (var ci = 0; ci < t.characters.length; ci++) {
+					try {
+						t.characters[ci].tracking = trackingValue;
+					} catch (ee) {}
+				}
+			}
+
+			// 适合文本框：如果溢流则 fit
+			try {
+				if (tf.overflows) {
+					tf.fit(FitOptions.FRAME_TO_CONTENT);
+				}
+			} catch (e) {
+			}
+		} catch (e) {
+			throw e;
+		}
+	}
 /**
  * 处理单个文本框
  */
@@ -235,9 +268,7 @@ function processTextFrame(frame, folder, index) {
             alert("文本框为空，跳过处理");
             return;
         }
-        if (frame.overflows) {
-            frame.fit(FitOptions.FRAME_TO_CONTENT);
-        }
+        applyTrackingAndFit(frame, getFontSize(frame)*14);
         
         // 获取文本框所在的页面
         var page = frame.parentPage;
