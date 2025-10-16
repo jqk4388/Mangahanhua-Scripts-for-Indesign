@@ -268,11 +268,11 @@ ID特效-白底雕.jsx
 			// 对全文字符设置追踪（tracking）
 			try {
 				t.tracking = trackingValue;
-				//斜变体设置
-				t['shataiAdjustRotation'] = false;
-				t['shataiAdjustTsume'] = true;
-				t['shataiDegreeAngle'] = 4500; //角度45°
-				t['shataiMagnification'] = 1500; //放大15%
+				// //斜变体设置
+				// t['shataiAdjustRotation'] = false;
+				// t['shataiAdjustTsume'] = true;
+				// t['shataiDegreeAngle'] = 4500; //角度45°
+				// t['shataiMagnification'] = 1500; //放大15%
 			} catch (e) {
 				// 如果追踪属性不可用，则按字符遍历
 				for (var ci = 0; ci < t.characters.length; ci++) {
