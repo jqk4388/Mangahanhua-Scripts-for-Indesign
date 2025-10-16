@@ -471,7 +471,7 @@ function roughenInIllustrator(filePath) {
         
         // 检查Illustrator是否可用
         if (!BridgeTalk.isRunning("illustrator")) {
-            alert("Illustrator未运行，请先启动Illustrator");
+            alert("Illustrator未运行，请先启动Illustrator，或启动方式不对请重启Illustrator不要打开任何文件！");
             return;
         }
         
@@ -481,7 +481,7 @@ function roughenInIllustrator(filePath) {
         // 构造发送给Illustrator的完整脚本
         var script = 
             "var filePath = '" + filePath.fsName.replace(/\\/g, "\\\\") + "';\n" +
-            scriptFunction + ";\n" +
+            scriptFunction + "\n" +
             "illustratorRoughenScript(filePath,0.15,50);";
         
         // 创建BridgeTalk消息
@@ -528,7 +528,9 @@ function sleepWithEvents(milliseconds) {
 function placeAIFile(page, filePath) {
     try {
         // 在相同页面上置入AI文件
+        app.pdfPlacePreferences.pdfCrop = PDFCrop.CROP_BLEED
         var placedAsset = page.place(new File(filePath.fsName))[0];
+        app.pdfPlacePreferences.pdfCrop = PDFCrop.CROP_CONTENT_VISIBLE_LAYERS
         placedAsset.parent.locked = true;
     } catch (err) {
         alert("置入AI文件时出错: " + err.description);
