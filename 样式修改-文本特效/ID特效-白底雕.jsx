@@ -66,14 +66,15 @@
 			}
 			var tf1 = tf.duplicate();
 			tf.visible = false;
-			// 1. 修改字间距并适合框
-			applyTrackingAndFit(tf1, 15*tf['parentStory']['pointSize']);
+			var fontSize = tf['parentStory']['pointSize'];
+			// 1. 修改字间距为 25（Tracking）并适合框
+			applyTrackingAndFit(tf1, 12*fontSize);
 
 			// 2. 修改文字描边为黑色0.25pt，斜接连接，斜接限制2x，填充白色
 			applyTextStrokeAndFill(doc, tf1, 0.25);
 
 			// 3. 多重复制 10 次，每次偏移 -0.02mm, -0.02mm
-			var copies = createCopies(tf1, 10, -0.02, -0.02);
+			var copies = createCopies(tf1, 0.9*fontSize, -0.02, -0.02);
 			tf1.remove(); // 删除原件
 			// 4. 将复制的十个文本框编组，再原地复制一组，记录 id
 			var groupA = doc.groups.add(copies);

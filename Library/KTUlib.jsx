@@ -419,3 +419,316 @@ Array.prototype.includes = function (item) {
   for (var i = 0; i < this.length; i++) if (this[i] == item) return true;
   return false;
 };
+/**
+ * 隐藏未选中的元素（仅影响选中文本框所在的页面）
+ */
+function hideUnselectedElements(selectedFrames) {
+    if (!selectedFrames || selectedFrames.length === 0) return;
+
+    // 以第一个选中的文本框为准，获取图层 A 和页面 B
+    var targetFrame = selectedFrames[0];
+    var layerA = targetFrame.itemLayer;
+    var pageB = targetFrame.parentPage;
+
+    // 隐藏所有图层，除了图层 A
+    for (var i = 0; i < theLayers.length; i++) {
+        try {
+            theLayers[i].visible = (theLayers[i].id === layerA.id);
+        } catch (e) {
+            // 忽略无法设置可见性的对象
+        }
+    }
+
+    // 如果无法确定页面，则不做页面层面的隐藏
+    if (!pageB) return;
+
+    // 构建一个快速查找表，标记需要保留可见性的选中文本框（按 id）
+    var keepIds = {};
+    for (var j = 0; j < selectedFrames.length; j++) {
+        var f = selectedFrames[j];
+        if (f && f.isValid) keepIds[f.id] = true;
+    }
+
+    // 隐藏页面 B 上的所有元素，除了选中的文本框
+    var pageItems = pageB.pageItems;
+    for (var k = 0; k < pageItems.length; k++) {
+        var item = pageItems[k];
+        try {
+            item.visible = !!keepIds[item.id];
+        } catch (e) {
+            // 忽略无法设置可见性的对象
+        }
+    }
+}
+/**
+ * 保存所有图层及对象的可见状态（支持分组）
+ */
+function saveLayerStates() {
+    var states = [];
+
+    for (var i = 0; i < theLayers.length; i++) {
+        var layer = theLayers[i];
+        var layerState = {
+            id: layer.id,                 // 记录图层 ID
+            visible: layer.visible,
+            items: []
+        };
+
+        // 保存图层中对象的可见性（递归支持分组）
+        var items = layer.pageItems;
+        for (var j = 0; j < items.length; j++) {
+            layerState.items.push(collectItemState(items[j]));
+        }
+
+        states.push(layerState);
+    }
+
+    return states;
+}
+/**
+ * 恢复所有图层及对象的可见状态
+ */
+function restoreLayerStates(states, tempFrame) {
+    if (!states || !states.length) return;
+    var doc = app.activeDocument;
+
+    // 取文本框所在的页面A和图层B（如果有提供 tempFrame）
+    var pageA = null, layerB = null;
+    if (tempFrame && tempFrame.isValid) {
+        try {
+            layerB = tempFrame.itemLayer;
+            pageA = tempFrame.parentPage;
+        } catch (e) {
+            layerB = null;
+            pageA = null;
+        }
+    }
+
+    for (var i = 0; i < states.length; i++) {
+        var layerState = states[i];
+        var layer = getByID(doc.layers, layerState.id);
+        if (!layer) continue;
+
+        try {
+            // 恢复图层可见性
+            try { layer.visible = layerState.visible; } catch(e) {}
+
+            // 对于目标图层B，先恢复图层可见性
+            try { layer.visible = layerState.visible; } catch(e) {}
+
+            // 如果无法确定页面A，则不遍历具体元素（保持图层整体恢复）
+            if (!pageA) continue;
+
+            // 构建页面A在该图层上的顶层对象快速查找表（仅顶层 pageItems）
+            var pageItemMap = {};
+            try {
+                var topItems = layer.pageItems;
+                for (var p = 0; p < topItems.length; p++) {
+                    var ti = topItems[p];
+                    // 确保该顶层对象位于页面A
+                    try {
+                        if (ti.parentPage && ti.parentPage.id === pageA.id) {
+                            pageItemMap[ti.id] = true;
+                        }
+                    } catch(e) {}
+                }
+            } catch(e) {
+                // 若获取 pageItems 失败，则跳过具体恢复
+                continue;
+            }
+
+            // 仅遍历并恢复属于页面A 的那些状态（避免遍历整层所有元素状态）
+            for (var j = 0; j < layerState.items.length; j++) {
+                var itemState = layerState.items[j];
+                if (!itemState) continue;
+                if (!pageItemMap[itemState.id]) continue; // 不是页面A上的顶层对象，跳过
+                try {
+                    restoreItemState(itemState, layer);
+                } catch(e) {
+                    // 忽略单项恢复错误
+                }
+            }
+
+        } catch (e) {
+            // 忽略单个图层恢复错误，继续处理下一个图层
+        }
+    }
+
+    // 最后统一隐藏临时框
+    if (tempFrame && tempFrame.isValid) {
+        try { tempFrame.visible = false; } catch(e) {}
+    }
+}
+/**
+ * 递归收集对象状态（含分组）
+ */
+function collectItemState(item) {
+    var state = {
+        id: item.id,
+        visible: item.visible,
+        type: item.constructor.name,
+        children: []
+    };
+
+    // 如果是编组对象，递归保存内部子对象状态
+    if (item instanceof Group) {
+        var subItems = item.pageItems;
+        for (var i = 0; i < subItems.length; i++) {
+            state.children.push(collectItemState(subItems[i]));
+        }
+    }
+
+    return state;
+}
+
+/**
+ * 递归恢复单个对象状态
+ */
+function restoreItemState(state, parentContainer) {
+    var item = getByID(parentContainer.pageItems, state.id);
+    if (!item) return; // 被删除则忽略
+
+    try {
+        item.visible = state.visible;
+    } catch(e) {}
+
+    if (state.children && state.children.length > 0 && item instanceof Group) {
+        for (var i = 0; i < state.children.length; i++) {
+            restoreItemState(state.children[i], item);
+        }
+    }
+}
+/**
+ * 根据 ID 从集合中查找对象
+ */
+function getByID(collection, id) {
+    for (var i = 0; i < collection.length; i++) {
+        if (collection[i].id == id) return collection[i];
+    }
+    return null;
+}
+
+/**
+ * 提取字符串中的前N个汉字
+ */
+function extractChineseCharacters(str, count) {
+    var chineseChars = "";
+    for (var i = 0; i < str.length && chineseChars.length < count; i++) {
+        var charCode = str.charCodeAt(i);
+        // 判断是否为汉字（基本汉字范围）
+        if (charCode >= 0x4e00 && charCode <= 0x9fff) {
+            chineseChars += str.charAt(i);
+        }
+    }
+    return chineseChars;
+}
+
+/**
+ * 导出页面为AI文件
+ */
+function exportToAI(page, filePath) {
+    try {
+        // 使用PDF导出预设"高质量打印"
+        var pdfExportPresets = app.pdfExportPresets;
+        var preset = null;
+        
+        // 尝试查找"高质量打印"预设
+        try {
+            preset = pdfExportPresets.itemByName("高质量打印");
+            if (!preset.isValid) {
+                preset = pdfExportPresets.itemByName("[高质量打印]");
+            }
+        } catch(e) {
+            // 预设不存在，使用默认预设
+        }
+        
+        // 如果找不到特定预设，使用第一个可用预设
+        if (!preset || !preset.isValid) {
+            preset = pdfExportPresets.firstItem();
+        }
+        
+        // 设置导出参数
+        app.pdfExportPreferences.pageRange = page.name;
+        
+        // 执行导出
+        theDoc.exportFile(ExportFormat.PDF_TYPE, filePath, false, preset);
+        
+    } catch (err) {
+        throw new Error("导出PDF时出错: " + err.description);
+    }
+}
+/**
+ * 将AI文件置入到文档中
+ */
+function placeAIFile(page, filePath) {
+    try {
+        // 在相同页面上置入AI文件
+        app.pdfPlacePreferences.pdfCrop = PDFCrop.CROP_BLEED
+        var placedAsset = page.place(new File(filePath.fsName))[0];
+        app.pdfPlacePreferences.pdfCrop = PDFCrop.CROP_CONTENT_VISIBLE_LAYERS
+        placedAsset.parent.locked = true;
+    } catch (err) {
+        alert("置入AI文件时出错: " + err.description);
+    }
+}
+function removeOutlined(obj) {
+    if (obj == null) return;
+
+    // 如果对象有 remove 方法，直接删除
+    if (typeof obj.remove === "function") {
+        obj.remove();
+    } 
+    // 如果是数组或类数组
+    else if (obj instanceof Array || (typeof obj === "object" && "length" in obj)) {
+        for (var i = 0; i < obj.length; i++) {
+            removeOutlined(obj[i]); // 递归删除每个元素
+        }
+    } 
+    // 如果是单个对象但没有 remove 方法（比如某些特殊返回类型）
+    else {
+        // 可以尝试通过 parent 删除
+        if (obj.hasOwnProperty("parent") && obj.parent) {
+            obj.parent.remove();
+        }
+    }
+}
+// 获取字号
+function getFontSize(textFrame) {
+    try {
+        return textFrame['parentStory']['pointSize'];
+    } catch (e) {
+        return 12; // 默认值
+    }
+}
+/**
+ * 修改文本框的 Tracking（字距），并如果有 overset（溢流）则 fit
+ * @param {TextFrame} tf
+ * @param {Number} trackingValue - 文字跟踪（追踪），单位 InDesign 跟踪值
+ */
+function applyTrackingAndFit(tf, trackingValue) {
+    try {
+        if (!tf || !tf.texts || tf.texts.length === 0) return;
+        var t = tf.texts[0];
+        // 对全文字符设置追踪（tracking）
+        try {
+            t.tracking = trackingValue;
+        } catch (e) {
+            // 如果追踪属性不可用，则按字符遍历
+            for (var ci = 0; ci < t.characters.length; ci++) {
+                try {
+                    t.characters[ci].tracking = trackingValue;
+                } catch (ee) {}
+            }
+        }
+
+        // 适合文本框：如果溢流则 fit
+        try {
+            if (tf.overflows) {
+                tf.fit(FitOptions.FRAME_TO_CONTENT);
+            }
+        } catch (e) {
+        }
+    } catch (e) {
+        throw e;
+    }
+}
