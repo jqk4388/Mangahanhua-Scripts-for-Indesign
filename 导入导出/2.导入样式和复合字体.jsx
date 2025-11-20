@@ -30,10 +30,11 @@ function getActiveDocument() {
     }
 }
 
-// 选择INDD文件
+// 选择模板文件
 function selectInddFile() {
     try {
-        return File.openDialog("选择一个 INDD 文件", "*.indd");
+        //需要选择indd或者indt文件
+        return File.openDialog("选择一个模板文件", "*.indd;*.indt");
     } catch (e) {
         alert("文件选择出错: " + e.message);
         return null;
