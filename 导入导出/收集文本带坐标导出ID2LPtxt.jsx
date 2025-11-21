@@ -11,6 +11,9 @@ var doc = app.activeDocument;
     doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.millimeters;
     doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.millimeters;
     doc.zeroPoint = [0, 0];
+    //文本大小的单位改成点
+    doc.viewPreferences.textSizeMeasurementUnits = MeasurementUnits.POINTS;
+    doc.viewPreferences.typographicMeasurementUnits = MeasurementUnits.POINTS;
 
 // 主函数
 function main() {
