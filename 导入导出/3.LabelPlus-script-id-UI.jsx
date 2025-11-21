@@ -97,9 +97,9 @@ function parseLines(lines, isSingleLineMode) {
             // 根据模式处理文本内容
             if (isSingleLineMode || textContent.length === 1) {
                 try {
-                    //从textContent[0]中提取大括号{}内的内容，包括大括号本身
+                    //从textContent[0]中提取大括号{}内的内容，包括大括号本身，包括多个大括号连用
                         var braceMatch="";
-                        braceMatch = textContent[0].match(/\{.*?\}/);
+                        braceMatch = textContent[0].match(/\{.*?\}/g);
                 } catch (error) {
                     
                 }

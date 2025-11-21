@@ -6,6 +6,11 @@ if (app.documents.length === 0) {
 }
 
 var doc = app.activeDocument;
+    // 设置标尺原点和单位
+    doc.viewPreferences.rulerOrigin = RulerOrigin.pageOrigin;
+    doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.millimeters;
+    doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.millimeters;
+    doc.zeroPoint = [0, 0];
 
 // 主函数
 function main() {
@@ -62,6 +67,8 @@ function processPage(page, file) {
 
         // 跳过隐藏的文本框
         if (!textFrame.visible) continue;
+        //跳过在隐藏的图层的文本框
+        if (textFrame.itemLayer.visible === false) continue;
 
         var text = textFrame['parentStory']['contents'];
         if (!text || String(text).replace(/^\s+|\s+$/g, '') === "") continue; // 跳过空文本框
@@ -89,8 +96,7 @@ function processPage(page, file) {
 
         // 写入文本信息
         file.writeln("----------------[" + textIndex + "]----------------[" + x.toFixed(5) + "," + y.toFixed(5) + "," + groupIndex + "]");
-        file.writeln("{字体：" + fontName + "}{字号：" + fontSize + "}");
-        file.writeln(text);
+        file.writeln("{字体：" + fontName + "}{字号：" + fontSize + "}"+text);
 
         textIndex++;
     }
