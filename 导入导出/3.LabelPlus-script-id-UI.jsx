@@ -692,6 +692,15 @@ function showThirdInterface(filePathInput) {
         return null;
     }
     if (result === 1) {
+        //如果有名字为Text的图层，则选中
+        try {
+            var textLayer = doc.layers.itemByName("Text");
+            if (textLayer.isValid) {
+                doc.activeLayer = textLayer;
+                textLayer.locked = false;
+                textLayer.visible = true;
+            }
+        } catch (e) {}
         KTUDoScriptAsUndoable(function() {processStart(filePathInput)}, "LP翻译稿导入");
     }
 }
