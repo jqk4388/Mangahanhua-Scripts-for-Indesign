@@ -1,26 +1,4 @@
-﻿/* 
-    Position.js
-
-    Updated: Jan 17 2020, Sara Linsley
-    
-    ----------------
-
-    Installation instructions here: https://github.com/saraoswald/Manga-Scripts#how-to-use-scripts-in-indesign
-
-    Purpose: 
-        Shifts and scales art that's been placed in an InDesign document
-
-    Usage Instructions: 
-        - Run Position.js with a document open
-        - Specify the scale and shift amounts (in points)
-        - Specify which pages to transform
-        - Hit OK
-        
-    Important Notes: 
-        - This is a really intensive operation on your computer. You might need to do it in batches. 
-*/
-
-// Feel free to change the default values
+﻿#include "../Library/KTUlib.jsx"
 var defaults = {
     oddPages: {
         enabled: true,
@@ -216,7 +194,7 @@ function main() {
     if (doc.allGraphics.length === 0) {
         alert('Could not find any linked graphics in this document.');
     } else if (app.documents.length != 0) {
-        myDisplayDialog();
+        KTUDoScriptAsUndoable(function() {myDisplayDialog()}, "图像调整位置");
     }
 
     app.scriptPreferences.measurementUnit = usersUnits;

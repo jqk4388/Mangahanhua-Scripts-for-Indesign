@@ -1,8 +1,8 @@
 // LP翻译稿处理工具
 // 该脚本用于处理LP翻译稿，将文本插入到InDesign文档中，并根据分组应用样式
 // 作者：几千块
-// 日期：20251013
-var version = "2.3";
+// 日期：202511123
+var version = "2.4";
 #include "../Library/KTUlib.jsx"
 // 声明全局变量
 var totalPages = 0;
@@ -11,6 +11,7 @@ var selectedPages =[];// 保存选中的页面
 var startPage = 1;// 设置起始页码
 var singleLineMode = false; // 默认单行断句模式
 var multiLineRadio = true; // 默认多行断句模式
+var pageOffset = 0; // 页码偏移，允许正/负偏移，默认0
 var matchByNumber = false; // 按页码匹配选择的文本
 var fromStartoEnd = true; // 默认从头导入所有文本
 var replacements = {
@@ -336,74 +337,35 @@ function processTxtEntries(txtEntries) {
         insertTextOnPageByTxtEntry(txtEntries[i], doc);
     }
 }
-// 创建用户界面一，选择文件
-function createUserInterface() {
-    var dialog = new Window("dialog", "LP翻译稿处理工具"+version);
+// 创建第二个用户界面匹配模式
+function showSecondInterface() {
+    var dialog = new Window("dialog", "LP翻译稿导入工具"+version);
 
-    // 单行断句和多行断句选项
-    var groupMode = dialog.add("group");
-    groupMode.orientation = "row";
-    
-    // 调整单选按钮的高度
-    var singleLineRadio = groupMode.add("radiobutton", undefined, "单行不断句\n文本一行为一个气泡");
-    singleLineRadio.preferredSize = [200, 40]; 
-    
-    var multiLineRadio = groupMode.add("radiobutton", undefined, "多行断句\n文本多行为一个气泡");
-    multiLineRadio.preferredSize = [200, 40]; 
-    
-    singleLineRadio.value = true; // 默认选中单行断句
+    // 顶部：文件选择与单行/多行断句选项（原第一个界面功能合并到这里）
+    var topGroup = dialog.add("group");
+    topGroup.orientation = "column";
+    var modeGroup = topGroup.add("group");
+    modeGroup.orientation = "row";
+    var singleLineRadio = modeGroup.add("radiobutton", undefined, "单行不断句\n文本一行为一个气泡");
+    singleLineRadio.preferredSize = [200, 40];
+    var multiLineRadioBtn = modeGroup.add("radiobutton", undefined, "多行断句\n文本多行为一个气泡");
+    multiLineRadioBtn.preferredSize = [200, 40];
+    singleLineRadio.value = true;
 
-    // 文件选择部分
-    var fileGroup = dialog.add("group");
-    fileGroup.orientation = "row";
-    fileGroup.add("statictext", undefined, "打开lptxt:");
-    var filePathInput = fileGroup.add("edittext", undefined, "");
-    filePathInput.characters = 30;
-    var browseButton = fileGroup.add("button", undefined, "浏览");
-
-    // 按钮组
-    var buttonGroup = dialog.add("group");
-    buttonGroup.orientation = "row";
-    var cancelButton = buttonGroup.add("button", undefined, "取消");
-    var confirmButton = buttonGroup.add("button", undefined, "确定");
-
-    // 浏览按钮点击事件
-    browseButton.onClick = function () {
+    var fileGroupTop = topGroup.add("group");
+    fileGroupTop.orientation = "row";
+    fileGroupTop.add("statictext", undefined, "打开lptxt:");
+    var filePathInput = fileGroupTop.add("edittext", undefined, "");
+    filePathInput.characters = 35;
+    var browseButtonTop = fileGroupTop.add("button", undefined, "浏览");
+    browseButtonTop.onClick = function () {
         var txtFile = File.openDialog("请选择一个LP翻译稿", "*.txt");
         if (txtFile) {
             filePathInput.text = txtFile.fsName;
+            // 选择文件后自动加载并刷新列表
+            try { loadAndFillFromPath(filePathInput.text); } catch (e) {}
         }
     };
-
-    // 取消按钮点击事件
-    cancelButton.onClick = function () {
-        dialog.close(0);
-    };
-
-    // 确定按钮点击事件
-    confirmButton.onClick = function () {
-        singleLineMode = singleLineRadio.value; // 获取用户选择的模式
-        multiLineRadio = multiLineRadio.value;
-        if (filePathInput.text === "") {
-            alert("请选择一个文件！");
-            return;
-        }
-        dialog.close(1);
-    };
-    var result = dialog.show(); 
-    if (result === 0) {
-        return null;
-    }
-    if (result === 1) {
-        showSecondInterface(filePathInput.text);
-    }
-
-
-    return filePathInput.text; 
-}
-// 创建第二个用户界面匹配模式
-function showSecondInterface(filePathInput) {
-    var dialog = new Window("dialog", "页面匹配设置");
 
     // 左侧选项部分
     var leftGroup = dialog.add("group");
@@ -424,6 +386,10 @@ function showSecondInterface(filePathInput) {
     startFromPageCheckbox.onClick = function () {
         startPageInput.enabled = startFromPageCheckbox.value;
     };
+    // 页码偏移设置
+    matchOptionGroup.add("statictext", undefined, "页码偏移(填整数, 可为负):");
+    var offsetInput = matchOptionGroup.add("edittext", undefined, "0");
+    offsetInput.characters = 4;
 
     // 右侧文件列表部分
     var rightGroup = dialog.add("group");
@@ -431,15 +397,8 @@ function showSecondInterface(filePathInput) {
 
     rightGroup.add("statictext", undefined, "LPtxt翻译稿对应页码");
     var pageNames = [];
-    var result = readAndParseTxtFileBase(filePathInput,replacements);
-    var lines = result.lines;
-    for (var i = 0; i < lines.length; i++) {
-        var pageMatch = lines[i].match(/>>>>>>>>\[(.*)\]<<<<<<<<$/);
-        if (pageMatch) {
-            pageNames.push(pageMatch[1]);
-        }
-    }
-    // 创建listbox
+    var pageNumbers = [];
+    // 创建listbox（初始为空，用户选择文件或点击刷新时加载）
     var fileList = rightGroup.add("listbox", undefined, undefined, {
         numberOfColumns: 2,
         showHeaders: true,
@@ -447,24 +406,29 @@ function showSecondInterface(filePathInput) {
         multiselect: true
     });
     fileList.maximumSize.height = 300;
-    fileList.preferredSize = [200, 300];
+    fileList.preferredSize = [400, 300];
     fileList.alignment = "fill";
-    // 滚动条在listbox内容超出高度时自动出现（ScriptUI自动处理）
 
-    var pageNumbers = extractPageNumbers(pageNames);
-
-    function fillFileList(array) {
+    function loadAndFillFromPath(path) {
+        pageNames = [];
+        pageNumbers = [];
         fileList.removeAll();
-        for (var i = 0; i < array.length; i++) {
-            with(fileList.add("item", array[i])) {
-                subItems[0].text = pageNumbers[i];
+        if (!path) return;
+        var res = readAndParseTxtFileBase(path, replacements);
+        var lines = res.lines || [];
+        for (var li = 0; li < lines.length; li++) {
+            var pageMatch = lines[li].match(/>>>>>>>>\[(.*)\]<<<<<<<<$/);
+            if (pageMatch) {
+                pageNames.push(pageMatch[1]);
             }
         }
-    }
-    fillFileList(pageNames);
-    // 默认选中所有文件
-    for (var j = 0; j < fileList.items.length; j++) {
-        fileList.items[j].selected = true;
+        pageNumbers = extractPageNumbers(pageNames);
+        for (var ii = 0; ii < pageNames.length; ii++) {
+            var it = fileList.add("item", pageNames[ii]);
+            if (pageNumbers[ii] !== undefined) it.subItems[0].text = pageNumbers[ii];
+            it.selected = true;
+        }
+        dialog.selectedPages = [];
     }
 
     // 选中的文件列表
@@ -478,6 +442,12 @@ function showSecondInterface(filePathInput) {
                 dialog.selectedPages.push(pageNames[i]);
             }
         }
+    };
+
+    // 添加一个刷新按钮以在用户选择文件后刷新列表
+    var refreshBtn = rightGroup.add("button", undefined, "刷新列表");
+    refreshBtn.onClick = function () {
+        loadAndFillFromPath(filePathInput.text);
     };
 
     // 按钮组
@@ -507,10 +477,28 @@ function showSecondInterface(filePathInput) {
             startFromPage = true;
         }
 
-        // 获取用户选择的页码列表,纯数字
+        // 如果未选择文件或列表为空，提示并返回
+        if (!filePathInput.text || fileList.items.length === 0) {
+            alert('请先选择一个 LP 文本文件。');
+            return;
+        }
+
+        // 获取用户选择的页码列表,纯数字（先重置）
+        selectedPages = [];
         for (var i = 0; i < fileList.items.length; i++) {
             if (fileList.items[i].selected) {
                 selectedPages.push(pageNumbers[i]);
+            }
+        }
+
+        // 读取并解析页码偏移值
+        pageOffset = parseInt(offsetInput.text, 10);
+        if (isNaN(pageOffset)) {
+            pageOffset = 0;
+        }
+        if (pageOffset !== 0) {
+            for (var si = 0; si < selectedPages.length; si++) {
+                selectedPages[si] = selectedPages[si] + pageOffset;
             }
         }
 
@@ -528,7 +516,7 @@ function showSecondInterface(filePathInput) {
         return null;
     }
     if (result === 1) {
-        showThirdInterface(filePathInput);
+        showThirdInterface(filePathInput.text);
     }
 }
 
@@ -840,8 +828,8 @@ function processFile(filePath) {
 return txtEntries;
 }
 
-// 调用第一界面
-var filePathInput = createUserInterface();
+// 直接从第二个界面开始运行
+showSecondInterface();
 //调试用
 // var filePathInput = "M:\\汉化\\PS_PNG\\output_数据.txt"
 // // 调用第二界面
