@@ -302,7 +302,7 @@ function applyStylesBasedOnGroup(textFrame, group) {
 // 单页操作，插入文本到页面
 function insertTextOnPageByTxtEntry(entry) {
     var pageIndex = parseInt(entry.pageImage,10) - 1; // 假设pageImage类似001.tif
-    var page = doc.pages[pageIndex];
+    var page = doc.pages[pageIndex+pageOffset];
     
     // 如果页面不存在，则新建页面
     if (!page) {
@@ -386,10 +386,47 @@ function showSecondInterface() {
     startFromPageCheckbox.onClick = function () {
         startPageInput.enabled = startFromPageCheckbox.value;
     };
-    // 页码偏移设置
+    // 页码偏移设置（含刷新/应用偏移按钮）
     matchOptionGroup.add("statictext", undefined, "页码偏移(填整数, 可为负):");
-    var offsetInput = matchOptionGroup.add("edittext", undefined, "0");
+    var offsetGroup = matchOptionGroup.add("group");
+    offsetGroup.orientation = "row";
+    var offsetInput = offsetGroup.add("edittext", undefined, "0");
     offsetInput.characters = 4;
+    // 将刷新按钮放在偏移输入框的右侧：点击时对列表中的页码应用偏移
+    var refreshBtn = offsetGroup.add("button", undefined, "刷新列表");
+    refreshBtn.onClick = function () {
+        // 读取偏移并以 originalPageNumbers 为基准计算新页码，避免每次累加
+        var off = parseInt(offsetInput.text, 10);
+        if (isNaN(off)) {
+            alert("请输入整数偏移值（可为负）");
+            return;
+        }
+
+        // 若列表为空，尝试从路径加载（loadAndFillFromPath 会设置 originalPageNumbers）
+        if (!fileList || fileList.items.length === 0) {
+            loadAndFillFromPath(filePathInput.text);
+        }
+
+        // 以 originalPageNumbers 为基准；若快照不存在或长度不匹配，则退回到 pageNumbers
+        var baseNumbers = (typeof originalPageNumbers !== 'undefined' && originalPageNumbers.length === fileList.items.length) ? originalPageNumbers : pageNumbers;
+
+        // 判断是否有选中项：若有，则仅对选中项应用偏移；否则对所有项应用
+        var anySelected = false;
+        for (var si = 0; si < fileList.items.length; si++) {
+            if (fileList.items[si].selected) { anySelected = true; break; }
+        }
+
+        for (var i = 0; i < fileList.items.length; i++) {
+            if (anySelected && !fileList.items[i].selected) continue;
+            var baseVal = baseNumbers && baseNumbers[i] !== undefined ? parseInt(baseNumbers[i], 10) : NaN;
+            if (!isNaN(baseVal)) {
+                var newv = baseVal + off;
+                // 更新界面显示（subItems）和当前页码数组 pageNumbers
+                if (fileList.items[i].subItems && fileList.items[i].subItems[0]) fileList.items[i].subItems[0].text = String(newv);
+                if (pageNumbers && pageNumbers.length > i) pageNumbers[i] = newv;
+            }
+        }
+    };
 
     // 右侧文件列表部分
     var rightGroup = dialog.add("group");
@@ -398,6 +435,8 @@ function showSecondInterface() {
     rightGroup.add("statictext", undefined, "LPtxt翻译稿对应页码");
     var pageNames = [];
     var pageNumbers = [];
+    // 原始匹配的页码快照，供每次刷新以该快照为基准计算偏移（避免累加）
+    var originalPageNumbers = [];
     // 创建listbox（初始为空，用户选择文件或点击刷新时加载）
     var fileList = rightGroup.add("listbox", undefined, undefined, {
         numberOfColumns: 2,
@@ -423,6 +462,8 @@ function showSecondInterface() {
             }
         }
         pageNumbers = extractPageNumbers(pageNames);
+        // 记录原始页码快照
+        originalPageNumbers = pageNumbers.slice();
         for (var ii = 0; ii < pageNames.length; ii++) {
             var it = fileList.add("item", pageNames[ii]);
             if (pageNumbers[ii] !== undefined) it.subItems[0].text = pageNumbers[ii];
@@ -442,12 +483,6 @@ function showSecondInterface() {
                 dialog.selectedPages.push(pageNames[i]);
             }
         }
-    };
-
-    // 添加一个刷新按钮以在用户选择文件后刷新列表
-    var refreshBtn = rightGroup.add("button", undefined, "刷新列表");
-    refreshBtn.onClick = function () {
-        loadAndFillFromPath(filePathInput.text);
     };
 
     // 按钮组
@@ -483,15 +518,20 @@ function showSecondInterface() {
             return;
         }
 
-        // 获取用户选择的页码列表,纯数字（先重置）
+        // 获取用户选择的页码列表（基于 originalPageNumbers 快照，避免重复累加）
         selectedPages = [];
+        // 选择用于计算的基准数组：优先使用 originalPageNumbers 快照
+        var baseNums = (typeof originalPageNumbers !== 'undefined' && originalPageNumbers.length === fileList.items.length) ? originalPageNumbers : pageNumbers;
         for (var i = 0; i < fileList.items.length; i++) {
             if (fileList.items[i].selected) {
-                selectedPages.push(pageNumbers[i]);
+                // 推入基准数组对应值（可能为 undefined，如果是则忽略）
+                if (baseNums && baseNums[i] !== undefined) {
+                    selectedPages.push(parseInt(baseNums[i], 10));
+                }
             }
         }
 
-        // 读取并解析页码偏移值
+        // 读取并解析页码偏移值，仅在这里应用一次偏移到 selectedPages（不会修改 originalPageNumbers）
         pageOffset = parseInt(offsetInput.text, 10);
         if (isNaN(pageOffset)) {
             pageOffset = 0;
