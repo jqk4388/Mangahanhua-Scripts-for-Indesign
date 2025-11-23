@@ -1,13 +1,13 @@
 // Adobe InDesign Script: 自动拼音脚本
 // 主要功能：为选中文本框中的括号内容添加拼音注音
 // 作者：几千块
-// 日期：2025年9月22日
-// 版本：1.2
-
+// 日期：2025年11月23日
+// 版本：1.3
+#include "../Library/KTUlib.jsx"
 QUOTES_star = "\uFF08"; //  （）全形圆括号
 QUOTES_end = "\uFF09"; // 
 // 主函数
-main();
+KTUDoScriptAsUndoable(function() {main()}, "A自动拼音");
 
 function main() {
     // 确保有文档打开

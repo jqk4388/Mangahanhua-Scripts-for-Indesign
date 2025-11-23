@@ -1,10 +1,10 @@
 // Adobe InDesign Script: 自动加着重号
 // 功能：对选中的文本框内括号中的文字加着重号，并调整相关行距
 // 作者：几千块
-// 日期：2025年9月22日
-// 版本：1.2
+// 日期：2025年11月23日
+// 版本：1.3
 // 加点位置右上
-
+#include "../Library/KTUlib.jsx"
 QUOTES_star = "\u3010"; //  【
 QUOTES_end = "\u3011"; // 】
 // 主函数
@@ -191,4 +191,4 @@ function deleteBrackets(textFrame, positions) {
 }
 
 // 执行主函数
-main();
+KTUDoScriptAsUndoable(function() {main()}, "A自动加点");
