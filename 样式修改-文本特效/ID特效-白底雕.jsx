@@ -68,10 +68,20 @@
 			tf.visible = false;
 			var fontSize = tf['parentStory']['pointSize'];
 			// 1. 修改字间距为 25（Tracking）并适合框
-			applyTrackingAndFit(tf1, 12*fontSize);
+			if (fontSize > 0 && fontSize < 11) {
+				applyTrackingAndFit(tf1, 23*fontSize);
+			} else if (fontSize >= 11 && fontSize < 15) {
+				applyTrackingAndFit(tf1, 16*fontSize);
+			} else if (fontSize >= 15 && fontSize < 20) {
+				applyTrackingAndFit(tf1, 10*fontSize);
+			} else if (fontSize >= 20 && fontSize < 25) {
+				applyTrackingAndFit(tf1, 8*fontSize);
+			} else {
+				applyTrackingAndFit(tf1, 5*fontSize);
+			}
 
 			// 2. 修改文字描边为黑色0.25pt，斜接连接，斜接限制2x，填充白色
-			applyTextStrokeAndFill(doc, tf1, 0.25);
+			applyTextStrokeAndFill(doc, tf1, 0.045*fontSize);
 
 			// 3. 多重复制 10 次，每次偏移 -0.02mm, -0.02mm
 			var copies = createCopies(tf1, 0.9*fontSize, -0.02, -0.02);
