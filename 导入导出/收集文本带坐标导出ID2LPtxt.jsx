@@ -45,6 +45,136 @@ function writeHeader(file) {
     file.write("1,0\n-\n框内\n框外\n-\n备注备注备注\n");
 }
 
+// 将 kenten（着重号）插入应用到原始文本：在被加着重号的连续序列前后插入方括号
+function applyKentenInsertions(textObj, text) {
+    try {
+        var chars = textObj.characters;
+        var insertions = []; // { pos: index, text: string, priority: number }
+        var searchStart = 0;
+        for (var ci = 0; ci < chars.length; ci++) {
+            var ch = chars[ci];
+            var kentenKind = (ch && typeof ch.kentenKind !== 'undefined') ? String(ch.kentenKind) : "NONE";
+            if (ch && kentenKind !== "NONE") {
+                var k_end = ci;
+                while (k_end + 1 < chars.length && chars[k_end + 1] && String(typeof chars[k_end + 1].kentenKind !== 'undefined' ? chars[k_end + 1].kentenKind : "NONE") !== "NONE") {
+                    k_end++;
+                }
+                var k_seq = "";
+                for (var kk = ci; kk <= k_end; kk++) {
+                    k_seq += String(chars[kk].contents);
+                }
+                var k_found = -1;
+                if (k_seq !== "") {
+                    k_found = text.indexOf(k_seq, searchStart);
+                }
+                if (k_found === -1) {
+                    var fallbackPos2 = searchStart;
+                    for (var kk = ci; kk <= k_end; kk++) {
+                        var single2 = String(chars[kk].contents);
+                        var f3 = text.indexOf(single2, fallbackPos2);
+                        if (f3 === -1) break;
+                        fallbackPos2 = f3 + single2.length;
+                    }
+                    k_found = fallbackPos2 - k_seq.length;
+                }
+                var k_start_pos = (k_found !== -1) ? k_found : searchStart;
+                var k_end_pos = k_start_pos + k_seq.length;
+                insertions.push({ pos: k_start_pos, text: "【", priority: 0 });
+                insertions.push({ pos: k_end_pos, text: "】", priority: 1 });
+                searchStart = k_end_pos;
+                ci = k_end;
+            } else {
+                var simple = ch ? String(ch.contents) : "";
+                if (simple !== "") {
+                    var f2 = text.indexOf(simple, searchStart);
+                    if (f2 !== -1) searchStart = f2 + simple.length;
+                }
+            }
+        }
+
+        if (insertions.length > 0) {
+            insertions.sort(function(a, b) { if (a.pos !== b.pos) return a.pos - b.pos; return a.priority - b.priority; });
+            var finalText = text;
+            var added = 0;
+            for (var ii = 0; ii < insertions.length; ii++) {
+                var it = insertions[ii];
+                var ins = it.text;
+                var pos = it.pos + added;
+                if (pos < 0) pos = 0;
+                if (pos > finalText.length) pos = finalText.length;
+                finalText = finalText.slice(0, pos) + ins + finalText.slice(pos);
+                added += ins.length;
+            }
+            return finalText;
+        }
+    } catch (e) {
+        return text;
+    }
+    return text;
+}
+
+// 将 ruby（拼音）插入应用到文本：在连续带相同 rubyString 的序列末尾插入括号并放入拼音
+function applyRubyInsertions(textObj, text) {
+    try {
+        var chars = textObj.characters;
+        var insertions = [];
+        var searchStart = 0;
+        for (var ci = 0; ci < chars.length; ci++) {
+            var ch = chars[ci];
+            if (ch && ch.rubyFlag) {
+                var ruby = ch.rubyString || "";
+                var end = ci;
+                while (end + 1 < chars.length && chars[end + 1] && chars[end + 1].rubyFlag && String(chars[end + 1].rubyString) === String(ruby)) {
+                    end++;
+                }
+                var seqStr = "";
+                for (var k = ci; k <= end; k++) seqStr += String(chars[k].contents);
+                var found = -1;
+                if (seqStr !== "") found = text.indexOf(seqStr, searchStart);
+                if (found === -1) {
+                    var fallbackPos = searchStart;
+                    for (var k = ci; k <= end; k++) {
+                        var single = String(chars[k].contents);
+                        var f = text.indexOf(single, fallbackPos);
+                        if (f === -1) break;
+                        fallbackPos = f + single.length;
+                    }
+                    found = fallbackPos - seqStr.length;
+                }
+                var insertPos = (found !== -1) ? (found + seqStr.length) : searchStart;
+                if (ruby !== "") insertions.push({ pos: insertPos, text: "（" + ruby + "）", priority: 0 });
+                searchStart = insertPos;
+                ci = end;
+            } else {
+                var simple = ch ? String(ch.contents) : "";
+                if (simple !== "") {
+                    var f2 = text.indexOf(simple, searchStart);
+                    if (f2 !== -1) searchStart = f2 + simple.length;
+                }
+            }
+        }
+
+        if (insertions.length > 0) {
+            insertions.sort(function(a, b) { return a.pos - b.pos; });
+            var finalText = text;
+            var added = 0;
+            for (var ii = 0; ii < insertions.length; ii++) {
+                var it = insertions[ii];
+                var ins = it.text;
+                var pos = it.pos + added;
+                if (pos < 0) pos = 0;
+                if (pos > finalText.length) pos = finalText.length;
+                finalText = finalText.slice(0, pos) + ins + finalText.slice(pos);
+                added += ins.length;
+            }
+            return finalText;
+        }
+    } catch (e) {
+        return text;
+    }
+    return text;
+}
+
 // 处理单页
 function processPage(page, file) {
     var pageNumber = page.name; // 页码
@@ -77,87 +207,10 @@ function processPage(page, file) {
         var text = textObj.contents;
         if (!text || String(text).replace(/^\s+|\s+$/g, '') === "") continue; // 跳过空文本框
 
-        // 处理 ruby（拼音）序列：不要逐字符拼接（会导致特殊符号变成 id），而是记录要在原始 text 中插入拼音的位置，然后在原始字符串上做插入
-        var processedText = text; // 默认使用原始 text
-        try {
-            var chars = textObj.characters;
-            var insertions = []; // { pos: index(插入点, 在原始 text 中), ruby: string }
-
-            // 使用基于内容的匹配：把连续的带同一 rubyString 的字符拼成一个序列字符串，在原始 text 中用 indexOf 找到它的位置
-            var searchStart = 0;
-            for (var ci = 0; ci < chars.length; ci++) {
-                var ch = chars[ci];
-                if (ch && ch.rubyFlag) {
-                    var ruby = ch.rubyString || "";
-                    var end = ci;
-                    while (end + 1 < chars.length && chars[end + 1] && chars[end + 1].rubyFlag && String(chars[end + 1].rubyString) === String(ruby)) {
-                        end++;
-                    }
-
-                    // 拼接序列内容
-                    var seqStr = "";
-                    for (var k = ci; k <= end; k++) {
-                        seqStr += String(chars[k].contents);
-                    }
-
-                    // 在原始 text 中查找该序列（从上次匹配位置开始），定位插入点为序列末尾
-                    var found = -1;
-                    if (seqStr !== "") {
-                        found = text.indexOf(seqStr, searchStart);
-                    }
-                    if (found === -1) {
-                        // 如果未找到，退回到更保守的字符长度累加方式：在 searchStart 之后找第一个字符
-                        var fallbackPos = searchStart;
-                        for (var k = ci; k <= end; k++) {
-                            var single = String(chars[k].contents);
-                            var f = text.indexOf(single, fallbackPos);
-                            if (f === -1) {
-                                break;
-                            }
-                            fallbackPos = f + single.length;
-                        }
-                        found = fallbackPos - seqStr.length; // 可能不精确，但至少推进了位置
-                    }
-
-                    var insertPos = (found !== -1) ? (found + seqStr.length) : searchStart;
-                    if (ruby !== "") {
-                        insertions.push({ pos: insertPos, ruby: ruby });
-                    }
-
-                    // 推进 searchStart 到序列末尾附近，避免下次匹配回溯
-                    searchStart = insertPos;
-                    ci = end;
-                } else {
-                    // 非 ruby 字符：推进 searchStart，尽量与其内容匹配
-                    var simple = ch ? String(ch.contents) : "";
-                    if (simple !== "") {
-                        var f2 = text.indexOf(simple, searchStart);
-                        if (f2 !== -1) {
-                            searchStart = f2 + simple.length;
-                        }
-                    }
-                }
-            }
-
-            // 应用插入（按位置从前到后），并在原始 text 上插入拼音
-            if (insertions.length > 0) {
-                insertions.sort(function(a, b) { return a.pos - b.pos; });
-                var finalText = text;
-                var added = 0;
-                for (var ii = 0; ii < insertions.length; ii++) {
-                    var it = insertions[ii];
-                    var ins = "（" + it.ruby + "）";
-                    var pos = it.pos + added;
-                    if (pos < 0) pos = 0;
-                    if (pos > finalText.length) pos = finalText.length;
-                    finalText = finalText.slice(0, pos) + ins + finalText.slice(pos);
-                    added += ins.length;
-                }
-                processedText = finalText;
-            }
-        } catch (e) {
-            processedText = text;
-        }
+        // 先应用着重号插入，再应用拼音插入（两个独立函数）
+        var processedText = text;
+        processedText = applyKentenInsertions(textObj, processedText);
+        processedText = applyRubyInsertions(textObj, processedText);
 
         var geometricBounds = textFrame.geometricBounds; // [上, 左, 下, 右]
         var x = geometricBounds[1] / doc.documentPreferences.pageWidth;
