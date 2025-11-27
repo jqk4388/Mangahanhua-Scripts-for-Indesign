@@ -1,4 +1,6 @@
 // 导出查找报告.jsx
+#targetengine "session"
+var dlg;
 
 // 检查是否有打开的文档
 if (app.documents.length === 0) {
@@ -13,7 +15,7 @@ if (app.documents.length === 0) {
     }
 
     // UI对话框（palette类型，浮动）
-    var dlg = new Window("dialog", "查找与导出工具");
+    dlg = new Window("palette", "查找与导出工具");
     dlg.orientation = "column";
     dlg.alignChildren = "left";
 
