@@ -20,19 +20,19 @@ var defaults = {
 var doc = app.activeDocument;
 
 function myDisplayDialog() {
-    myDialog = app.dialogs.add({ name: "Layout Pages" });
-    var supportedPageRangeTypes = ["Range", "All"];
+    myDialog = app.dialogs.add({ name: "图像调整位置_精确数值" });
+    var supportedPageRangeTypes = ["范围", "所有"];
     var pageRangeControl, pageRangeInput;
     var oddPages = {};
     var evenPages = {};
     with(myDialog) {
         with(dialogColumns.add()) {
-            oddPages.enabledCheckbox = enablingGroups.add({ staticLabel: "Odd Pages", checkedState: defaults.oddPages.enabled });
+            oddPages.enabledCheckbox = enablingGroups.add({ staticLabel: "奇数页", checkedState: defaults.oddPages.enabled });
             with(oddPages.enabledCheckbox) {
                 with(dialogColumns.add()) {
-                    oddPages.scaleCheckbox = checkboxControls.add({ checkedState: defaults.oddPages.scale, staticLabel: "Set Image Scale:" });
-                    staticTexts.add({ staticLabel: "Shift Right:" });
-                    staticTexts.add({ staticLabel: "Shift Down:" });
+                    oddPages.scaleCheckbox = checkboxControls.add({ checkedState: defaults.oddPages.scale, staticLabel: "调整图像大小:" });
+                    staticTexts.add({ staticLabel: "左右偏移:" });
+                    staticTexts.add({ staticLabel: "上下偏移:" });
                 }
                 with(dialogColumns.add()) {
                     oddPages.scaleFactor = percentEditboxes.add({ editValue: defaults.oddPages.scaleFactor });
@@ -54,12 +54,12 @@ function myDisplayDialog() {
             }
         }
         with(dialogColumns.add()) {
-            evenPages.enabledCheckbox = enablingGroups.add({ staticLabel: "Even Pages", checkedState: defaults.evenPages.enabled });
+            evenPages.enabledCheckbox = enablingGroups.add({ staticLabel: "偶数页", checkedState: defaults.evenPages.enabled });
             with(evenPages.enabledCheckbox) {
                 with(dialogColumns.add()) {
-                    evenPages.scaleCheckbox = checkboxControls.add({ checkedState: defaults.oddPages.scale, staticLabel: "Set Image Scale:" });
-                    staticTexts.add({ staticLabel: "Shift Right:" });
-                    staticTexts.add({ staticLabel: "Shift Down:" });
+                    evenPages.scaleCheckbox = checkboxControls.add({ checkedState: defaults.evenPages.scale, staticLabel: "调整图像大小:" });
+                    staticTexts.add({ staticLabel: "左右偏移:" });
+                    staticTexts.add({ staticLabel: "上下偏移:" });
                 }
                 with(dialogColumns.add()) {
                     evenPages.scaleFactor = percentEditboxes.add({ editValue: defaults.evenPages.scaleFactor });
@@ -77,7 +77,7 @@ function myDisplayDialog() {
         var regex = /\d{3,4}(?=\_?\d?\d?[a-zA-Z]?\.[A-Za-z]{3,4})/;
 
         if (selectedPageRange === 0 && pageRange.length === 0) {
-            alert('Please enter a valid page range (e.g. "12, 32-33")');
+            alert('请输入有效的页面范围（例如："12, 32-33"）');
             needsReview = true;
         }
 
@@ -192,7 +192,7 @@ function main() {
     app.scriptPreferences.measurementUnit = MeasurementUnits.POINTS;
 
     if (doc.allGraphics.length === 0) {
-        alert('Could not find any linked graphics in this document.');
+        alert('不能在当前文档中找到任何链接的图像。');
     } else if (app.documents.length != 0) {
         KTUDoScriptAsUndoable(function() {myDisplayDialog()}, "图像调整位置");
     }
