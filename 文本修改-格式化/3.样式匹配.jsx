@@ -591,32 +591,58 @@ function updateUIFromConfig(ui, config) {
         var unmatchedRows = [];
         // 先构建ini配置的字体映射
         var iniFontMap = {};
+        var iniFontKeys = []; // 存储ini文件中的字体名称用于模糊匹配
         var i = 0;
         for (var key in config) {
             if (key.indexOf("font_") === 0) { // 用 indexOf 判断前缀
                 var index = parseInt(key.split("_")[1], 10); // 提取数字部分
-                iniFontMap[config[key]] = config["font_style_" + index];
+                var fontName = config[key];
+                iniFontMap[fontName] = config["font_style_" + index];
+                iniFontKeys.push(fontName); // 添加到字体名称数组
             }
         }
         // 遍历当前面板的行
         for (var idx = 0; idx < ui.leftRows.length; idx++) {
             var row = ui.leftRows[idx];
-            var fontName = row.edit.text;
-            if (fontName && iniFontMap.hasOwnProperty(fontName)) {
-                // 存在于ini，直接替换styleName
-                var styleName = iniFontMap[fontName];
-                if (styleName && row.dropdown.items.length > 0) {
-                    for (var k = 0; k < row.dropdown.items.length; k++) {
-                        if (row.dropdown.items[k].text == styleName) {
-                            row.dropdown.selection = k;
+            var currentFontName = row.edit.text;
+            if (currentFontName) {
+                // 精确匹配
+                if (iniFontMap.hasOwnProperty(currentFontName)) {
+                    var styleName = iniFontMap[currentFontName];
+                    if (styleName && row.dropdown.items.length > 0) {
+                        for (var k = 0; k < row.dropdown.items.length; k++) {
+                            if (row.dropdown.items[k].text == styleName) {
+                                row.dropdown.selection = k;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // 模糊匹配：查找ini中的字体名是否与当前字体名匹配
+                    var matched = false;
+                    for (var j = 0; j < iniFontKeys.length; j++) {
+                        var iniFontName = iniFontKeys[j];
+                        // 检查当前字体名是否包含ini中的字体名，或反之
+                        if (currentFontName.indexOf(iniFontName) !== -1 || iniFontName.indexOf(currentFontName) !== -1) {
+                            var styleName = iniFontMap[iniFontName];
+                            if (styleName && row.dropdown.items.length > 0) {
+                                for (var k = 0; k < row.dropdown.items.length; k++) {
+                                    if (row.dropdown.items[k].text == styleName) {
+                                        row.dropdown.selection = k;
+                                        break;
+                                    }
+                                }
+                            }
+                            matched = true;
                             break;
                         }
                     }
+                    if (!matched) {
+                        // 不存在于ini，收集
+                        unmatchedFonts.push(currentFontName);
+                        unmatchedRows.push(row);
+                    }
                 }
-            } else if (fontName) {
-                // 不存在于ini，收集
-                unmatchedFonts.push(fontName);
-                unmatchedRows.push(row);
             }
         }
 
@@ -698,7 +724,8 @@ function applyStyles(textFrames, config, charStyleNames, paraStyleNames) {
                 var styleName = config["font_style_" + fontIdx];
                 var cs = getStyleByName(charStyles, styleName);
                 if (cs) {
-                    if (txt.indexOf(fontName) !== -1) {
+                    // 使用模糊匹配判断是否应用样式
+                    if (isFontMatch(txt, fontName)) {
                         try {
                             textFrames[i].parentStory.appliedCharacterStyle = cs;
                         } catch (e) {}
@@ -772,6 +799,37 @@ function getClosestParaStyle(paraStyles, sizeStr) {
         }
     }
     return best;
+}
+
+// 模糊匹配字体名
+function isFontMatch(text, configFontName) {
+    // 如果文本中直接包含配置的字体名，直接返回 true
+    if (text.indexOf(configFontName) !== -1) {
+        return true;
+    }
+
+    // 检查文本中是否包含花括号格式的字体声明，比如 {字体：KakuminPro-Bold}
+    var fontPattern = "{字体：" + configFontName + "}";
+    if (text.indexOf(fontPattern) !== -1) {
+        return true;
+    }
+
+    // 模糊匹配逻辑：配置文件中的字体名是实际字体名的子串
+    // 例如：配置中有 KakuminPro-Bold，文本中出现 A-OTF-KakuminPro-Bold
+    // 先提取文本中所有花括号内的字体声明
+    var fontMatches = text.match(/\{字体：([^}]+)\}/g);
+    if (fontMatches) {
+        for (var i = 0; i < fontMatches.length; i++) {
+            // 提取花括号内的字体名
+            var extractedFont = fontMatches[i].replace(/\{字体：/, "").replace(/\}/, "");
+            // 检查配置的字体名是否是提取字体名的子串，或反之
+            if (extractedFont.indexOf(configFontName) !== -1 || configFontName.indexOf(extractedFont) !== -1) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 function ClearBrackets(textFrames) {

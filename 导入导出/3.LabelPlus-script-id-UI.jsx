@@ -351,6 +351,19 @@ function showSecondInterface() {
     var multiLineRadioBtn = modeGroup.add("radiobutton", undefined, "多行断句\n文本多行为一个气泡");
     multiLineRadioBtn.preferredSize = [200, 40];
     singleLineRadio.value = true;
+    // 同步全局模式变量到界面初始值
+    singleLineMode = singleLineRadio.value;
+    multiLineRadio = multiLineRadioBtn.value;
+
+    // 当用户切换单/多行选项时，同步更新全局变量
+    singleLineRadio.onClick = function() {
+        singleLineMode = true;
+        multiLineRadio = false;
+    };
+    multiLineRadioBtn.onClick = function() {
+        singleLineMode = false;
+        multiLineRadio = true;
+    };
 
     var fileGroupTop = topGroup.add("group");
     fileGroupTop.orientation = "row";
