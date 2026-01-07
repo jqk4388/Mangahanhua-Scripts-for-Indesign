@@ -1,10 +1,11 @@
 #targetengine "session"
+var version = "v1.1";
 var win;
 
 // 创建窗口界面
 function createWindow() {
     // 注意：不要在此函数外直接声明顶层窗口变量，函数仅返回新建的 palette 实例
-    var _win = new Window("palette", "代码运行器"); 
+    var _win = new Window("palette", "代码运行器 "+version); 
 
     // 创建代码输入区域
     _win.add("statictext", undefined, "代码粘贴区域：");
@@ -101,4 +102,4 @@ function createWindow() {
 
 // 调色板类型的窗口不能有主函数
 win = createWindow();
-window.show();
+win.show();

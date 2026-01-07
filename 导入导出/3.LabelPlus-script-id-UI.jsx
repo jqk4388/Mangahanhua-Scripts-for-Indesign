@@ -1,8 +1,8 @@
 // LP翻译稿处理工具
 // 该脚本用于处理LP翻译稿，将文本插入到InDesign文档中，并根据分组应用样式
 // 作者：几千块
-// 日期：202511123
-var version = "2.4";
+// 日期：20260107
+var version = "2.5";
 #include "../Library/KTUlib.jsx"
 // 声明全局变量
 var totalPages = 0;
@@ -100,7 +100,10 @@ function parseLines(lines, isSingleLineMode) {
                 try {
                     //从textContent[0]中提取大括号{}内的内容，包括大括号本身，包括多个大括号连用
                         var braceMatch="";
-                        braceMatch = textContent[0].match(/\{.*?\}/g);
+                        var braceMatchArr = textContent[0].match(/\{.*?\}/g);
+                        if (braceMatchArr) {
+                            braceMatch = braceMatchArr.join("");
+                        }
                 } catch (error) {
                     
                 }
@@ -586,7 +589,12 @@ function showThirdInterface(filePathInput) {
     var leftPanel = mainGroup.add("panel", undefined, "文字替换");
     leftPanel.alignChildren = "fill";
     leftPanel.preferredSize = [340, 350];
-    var leftAddBtn = leftPanel.add("button", undefined, "+");
+    var leftBtnGroup = leftPanel.add("group");
+    leftBtnGroup.orientation = "row";
+    var leftAddBtn = leftBtnGroup.add("button", undefined, "+");
+    leftAddBtn.preferredSize = [30, 30];
+    var physicalBookBtn = leftBtnGroup.add("button", undefined, "实体书");
+    var ebookBtn = leftBtnGroup.add("button", undefined, "电子书");
     var leftListPanel = leftPanel.add("panel");
     leftListPanel.preferredSize = [320, 300];
     leftListPanel.alignChildren = "top";
@@ -658,7 +666,7 @@ function showThirdInterface(filePathInput) {
                 dropdown.selection = 3;
             }
         }else if(dropdown.children.length > 5){
-            dropdown.selection = 5;
+            dropdown.selection = 6;
             }else {
                 dropdown.selection = 3;
             }
@@ -679,6 +687,8 @@ function showThirdInterface(filePathInput) {
         var opt = objectStyleMatchText[i];
         addRightRow(opt.label, opt.style, opt.checked);
     }
+    dialog.layout.layout(true);
+    dialog.center();
 
     // 加号按钮事件
     leftAddBtn.onClick = function () {
@@ -693,8 +703,25 @@ function showThirdInterface(filePathInput) {
         dialog.layout.layout(true);
         dialog.center();
     };
+    // 设置按钮点击事件
+    physicalBookBtn.onClick = function() {
+        // 设置为“实体书”预设：排除空键和问号
+        for (var i = 0; i < leftRows.length; i++) {
+            var key = leftRows[i].fromEdit.text;
+            leftRows[i].cb.value = !(key === "" || key === "？");
+        }
+        leftListPanel.layout.layout(true);
+        // 切换实体书状态
+    };
 
-    // 底部按钮组
+    ebookBtn.onClick = function() {
+        for (var i = 0; i < leftRows.length; i++) {
+            var key = leftRows[i].fromEdit.text;
+            leftRows[i].cb.value = !(key === "" || key === "！？" || key === "诶");
+        }
+        leftListPanel.layout.layout(true);
+        // 切换电子书状态
+    };
     var buttonGroup = dialog.add("group");
     buttonGroup.orientation = "row";
     var cancelButton = buttonGroup.add("button", undefined, "取消");

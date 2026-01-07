@@ -1,4 +1,4 @@
-var version = "1.21";
+var version = "1.22";
 #include "../Library/KTUlib.jsx"
 
 // 主入口
@@ -405,7 +405,7 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
     // 设置滚动条最大值为(总高度-可见区域)
     leftbar.maxvalue = Math.max(0, totalHeight - visibleHeight);
     leftbar.stepdelta = 24; // 设置为单行高度
-    leftbar.jumpdelta = visibleHeight; // 设置翻页距离为可见区域高度
+    leftbar.jumpdelta = visibleHeight/3; // 设置翻页距离为可见区域高度
     leftbar.onChanging = function () {
         leftListPanel.location.y = -1 * this.value;
     }
@@ -419,7 +419,7 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
     var visibleHeightR = 500;
     rightbar.maxvalue = Math.max(0, totalHeightR - visibleHeightR);
     rightbar.stepdelta = 24;
-    rightbar.jumpdelta = visibleHeightR;
+    rightbar.jumpdelta = visibleHeightR/5;
     rightbar.onChanging = function () {
         rightListPanel.location.y = -1 * this.value;
     }
@@ -433,6 +433,15 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
     var cancelBtn = btnGroup.add("button", undefined, "取消");
     var importBtn = btnGroup.add("button", undefined, "导入配置");
     var exportBtn = btnGroup.add("button", undefined, "导出配置");
+
+    // 字号基准组
+    var baselineGroup = btnGroup.add("group");
+    baselineGroup.orientation = "column";
+    baselineGroup.alignChildren = "center";
+    var baselineEdit = baselineGroup.add("edittext", undefined, "");
+    baselineEdit.preferredSize = [100, 22];
+    var baselineBtn = baselineGroup.add("button", undefined, "设为基准字号");
+    var baselineLabel = baselineGroup.add("statictext", undefined, "输入9号字的数值");
 
     // 加号按钮事件
     leftAddBtn.onClick = function () {
@@ -463,6 +472,8 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
         cancelBtn: cancelBtn,
         importBtn: importBtn,
         exportBtn: exportBtn,
+        baselineEdit: baselineEdit,
+        baselineBtn: baselineBtn,
         charStyleNames: charStyleNames,
         paraStyleNames: paraStyleNames
     };
@@ -579,6 +590,38 @@ function bindUIEvents(ui, fontList, sizeList, config, textFrames, charStyle, par
                 }
             }
             saveConfigFile(exportConfig, file.fsName);
+        }
+    };
+
+    // 字号基准按钮
+    ui.baselineBtn.onClick = function () {
+        var val = parseFloat(ui.baselineEdit.text);
+        if (isNaN(val) || val <= 0) {
+            alert("请输入有效的字号");
+            return;
+        }
+        var multiplier = 9 / val;
+        for (var j = 0; j < ui.rightRows.length; j++) {
+            var row = ui.rightRows[j];
+            var currentSize = parseFloat(row.edit.text);
+            if (!isNaN(currentSize)) {
+                var newSize = currentSize * multiplier;
+                // 重新匹配段落样式
+                var num = newSize;
+                var selIdx = -1;
+                var minDiff = 99999;
+                for (var i = 0; i < ui.paraStyleNames.length; i++) {
+                    var psNum = parseFloat(ui.paraStyleNames[i]);
+                    if (!isNaN(psNum)) {
+                        var diff = Math.abs(psNum - num);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            selIdx = i;
+                        }
+                    }
+                }
+                if (selIdx >= 0) row.dropdown.selection = selIdx;
+            }
         }
     };
 }

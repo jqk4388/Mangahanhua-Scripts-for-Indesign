@@ -1,3 +1,4 @@
+#include "../Library/KTUlib.jsx"
 // 兼容性垫片（ES3环境）
 if (!Array.prototype.indexOf) {
     Array.prototype.indexOf = function(item) {
@@ -25,7 +26,8 @@ function main() {
             return;
         }
 
-        DoalltextFrames(textFrames);//执行所有文本框
+        //执行所有文本框
+        KTUDoScriptAsUndoable(function() {DoalltextFrames(textFrames)} , "大语言模型断句");
 
     
         // alert("断句完成！");
@@ -55,7 +57,7 @@ function DoalltextFrames(textFrames) {
     
     // 关闭文件
     inputFile.close();
-    // 调用 jieba-pytojs 处理文本
+    // 调用 LLMtojs 处理文本
     var jsxPath = File($.fileName).parent
     var pythonScript = new File(jsxPath.fsName + "/LLMtojs.pyw");
     pythonScript.execute("\"" + inputFile.fsName + "\" \"" + outputFile.fsName + "\"");
