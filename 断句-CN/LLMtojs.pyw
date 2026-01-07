@@ -6,7 +6,6 @@ import time
 import requests
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import re
 import platform
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,7 +14,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 TMPDIR = tempfile.gettempdir()
 DEFAULT_INPUT = os.path.join(TMPDIR, "LLM_input.txt")
 DEFAULT_OUTPUT = os.path.join(TMPDIR, "LLM_output.txt")
-STATE_FILE = os.path.join(TMPDIR, "mangahanhua_state.json")
 
 # 默认API URLs
 DEFAULT_APIS = {
@@ -94,6 +92,8 @@ class App:
         self._write_ptr = 0
         self.max_retries = 10
         self.failure_counts = {}
+        self.total_tokens = 0
+        self.start_time = None
 
     def setup_ui(self):
         # 文件路径
@@ -248,6 +248,8 @@ class App:
             self.worker_thread.start()
 
     def run_processing(self):
+        self.start_time = time.time()
+        self.total_tokens = 0
         input_path = self.input_var.get()
         output_path = self.output_var.get()
         task_size = self.task_size_var.get()
@@ -353,10 +355,12 @@ class App:
             print("处理被停止")
             messagebox.showinfo("已停止", f"已停止，当前已完成 {completed}/{len(pending_indices)} 行。")
         elif completed >= len(pending_indices):
-            print("处理完成")
+            elapsed_time = time.time() - self.start_time
+            print(f"处理完成，用时 {elapsed_time:.2f} 秒，总共消耗 {self.total_tokens} tokens")
             messagebox.showinfo("完成", "断句已完成")
         else:
-            print(f"处理未完成，剩余 {len(pending_indices) - completed} 行")
+            elapsed_time = time.time() - self.start_time
+            print(f"处理未完成，用时 {elapsed_time:.2f} 秒，总共消耗 {self.total_tokens} tokens，剩余 {len(pending_indices) - completed} 行")
             messagebox.showwarning("未完成", f"处理结束，但仍有 {len(pending_indices) - completed} 行未成功。")
         self.start_btn.config(text="开始处理")
 
@@ -368,7 +372,8 @@ class App:
         print("发送的提示内容:")
         print(prompt)
         print(f"发送API请求，提示长度: {len(prompt)} 字符")
-        response = self.call_api(prompt)
+        response, tokens = self.call_api(prompt)
+        self.total_tokens += tokens
         if not response:
             print("API调用失败，所有行失败")
             return [], indices  # 所有失败
@@ -421,7 +426,10 @@ class App:
                 }
                 resp = requests.post(api_url, json=payload, timeout=120)
                 resp.raise_for_status()
-                return resp.json().get("response", "")
+                data = resp.json()
+                response = data.get("response", "")
+                tokens = data.get("eval_count", 0)  # Ollama返回eval_count作为tokens
+                return response, tokens
             elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qianwen", "Zhipu"]:
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
@@ -431,7 +439,10 @@ class App:
                 }
                 resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
-                return resp.json()["choices"][0]["message"]["content"]
+                data = resp.json()
+                response = data["choices"][0]["message"]["content"]
+                tokens = data.get("usage", {}).get("total_tokens", 0)
+                return response, tokens
             elif api_type == "Baidu":
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
@@ -440,7 +451,10 @@ class App:
                 }
                 resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
-                return resp.json()["choices"][0]["message"]["content"]
+                data = resp.json()
+                response = data["choices"][0]["message"]["content"]
+                tokens = data.get("usage", {}).get("total_tokens", 0)
+                return response, tokens
             elif api_type == "Tencent":
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
@@ -450,7 +464,10 @@ class App:
                 }
                 resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
-                return resp.json()["choices"][0]["message"]["content"]
+                data = resp.json()
+                response = data["choices"][0]["message"]["content"]
+                tokens = data.get("usage", {}).get("total_tokens", 0)
+                return response, tokens
             elif api_type == "Gemini":
                 headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
                 payload = {
@@ -466,10 +483,13 @@ class App:
                 }
                 resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
-                return resp.json().get("contents", [{}])[0].get("parts", [{}])[0].get("text", "")
+                data = resp.json()
+                response = data.get("contents", [{}])[0].get("parts", [{}])[0].get("text", "")
+                tokens = data.get("usageMetadata", {}).get("totalTokenCount", 0)
+                return response, tokens
         except Exception as e:
             print(f"API调用失败: {e}")
-            return ""
+            return "", 0
 
     def split_response(self, response, num_parts):
         if "----" in response:

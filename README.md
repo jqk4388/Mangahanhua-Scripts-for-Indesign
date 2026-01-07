@@ -200,9 +200,9 @@
 
 2. 确保 `Library/KTUlib.jsx` 与其他脚本处于同级或正确引用路径
 
-3. 安装Python依赖（如需使用结巴断句）：
+3. 安装Python依赖（如需使用结巴/大模型断句）：
    ```bash
-   pip install jieba
+   pip install jieba requests
    ```
 
 4. 验证安装：
