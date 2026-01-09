@@ -687,8 +687,7 @@ function showThirdInterface(filePathInput) {
         var opt = objectStyleMatchText[i];
         addRightRow(opt.label, opt.style, opt.checked);
     }
-    dialog.layout.layout(true);
-    dialog.center();
+
 
     // 加号按钮事件
     leftAddBtn.onClick = function () {
@@ -726,6 +725,8 @@ function showThirdInterface(filePathInput) {
     buttonGroup.orientation = "row";
     var cancelButton = buttonGroup.add("button", undefined, "取消");
     var confirmButton = buttonGroup.add("button", undefined, "确定");
+    dialog.layout.layout(true);
+    dialog.center();
 
     // 取消按钮点击事件
     cancelButton.onClick = function () {
