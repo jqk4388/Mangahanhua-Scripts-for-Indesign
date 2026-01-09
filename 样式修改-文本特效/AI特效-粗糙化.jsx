@@ -32,8 +32,11 @@ function aiRoughenEffect() {
             return;
         }
         
+        // 获取文本框所在的页面
+        var page = textFrames[0].parentPage;
+        
         // 记录当前图层状态
-        var layerStates = saveLayerStates();
+        var layerStates = saveLayerStates(page);
         
         // 隐藏不需要的元素
         hideUnselectedElements(textFrames);
@@ -43,13 +46,13 @@ function aiRoughenEffect() {
             var tempFrame = processTextFrame(textFrames[j], docFolder, j)
         }
         // 还原图层状态
-        restoreLayerStates(layerStates, tempFrame);
+        restoreLayerStates(layerStates, tempFrame, page);
 
     } catch (err) {
         alert("发生错误，请先保存文件！ \n" + err.description);
         // 尝试还原图层状态
         try {
-            restoreLayerStates(layerStates);
+            restoreLayerStates(layerStates, null, page);
         } catch(e) {
             // 忽略还原状态时的错误
         }
@@ -289,4 +292,11 @@ function roughenInIllustrator(filePath) {
 }
 
 // 执行主函数
+//弹出提示框，点击确定才继续，取消退出脚本
+var userConfirm = confirm("在超过30页的文档中运行此脚本会非常慢，请把要做的特效文字复制到新文档！\n即将对选中的文本框应用AI粗糙化特效。\n请确保已保存当前文档，并且Illustrator已启动且未打开任何文件。\n点击“确定”继续，或“取消”退出脚本。");
+if (userConfirm) {
 KTUDoScriptAsUndoable(function() { aiRoughenEffect(); }, "AI粗糙化特效");
+} else {
+    // 用户取消操作，退出脚本
+    alert("操作已取消，脚本退出。");
+}

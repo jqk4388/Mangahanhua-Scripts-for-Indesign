@@ -461,9 +461,9 @@ function hideUnselectedElements(selectedFrames) {
     }
 }
 /**
- * 保存所有图层及对象的可见状态（支持分组）
+ * 保存所有图层及对象的可见状态（支持分组），仅针对指定页面
  */
-function saveLayerStates() {
+function saveLayerStates(page) {
     var states = [];
 
     for (var i = 0; i < theLayers.length; i++) {
@@ -474,10 +474,13 @@ function saveLayerStates() {
             items: []
         };
 
-        // 保存图层中对象的可见性（递归支持分组）
+        // 只保存指定页面上的 pageItems
         var items = layer.pageItems;
         for (var j = 0; j < items.length; j++) {
-            layerState.items.push(collectItemState(items[j]));
+            var item = items[j];
+            if (item.parentPage && item.parentPage.id === page.id) {
+                layerState.items.push(collectItemState(item));
+            }
         }
 
         states.push(layerState);
@@ -486,23 +489,11 @@ function saveLayerStates() {
     return states;
 }
 /**
- * 恢复所有图层及对象的可见状态
+ * 恢复所有图层及对象的可见状态，仅针对指定页面
  */
-function restoreLayerStates(states, tempFrame) {
+function restoreLayerStates(states, tempFrame, page) {
     if (!states || !states.length) return;
     var doc = app.activeDocument;
-
-    // 取文本框所在的页面A和图层B（如果有提供 tempFrame）
-    var pageA = null, layerB = null;
-    if (tempFrame && tempFrame.isValid) {
-        try {
-            layerB = tempFrame.itemLayer;
-            pageA = tempFrame.parentPage;
-        } catch (e) {
-            layerB = null;
-            pageA = null;
-        }
-    }
 
     for (var i = 0; i < states.length; i++) {
         var layerState = states[i];
@@ -511,37 +502,12 @@ function restoreLayerStates(states, tempFrame) {
 
         try {
             // 恢复图层可见性
-            try { layer.visible = layerState.visible; } catch(e) {}
+            layer.visible = layerState.visible;
 
-            // 对于目标图层B，先恢复图层可见性
-            try { layer.visible = layerState.visible; } catch(e) {}
-
-            // 如果无法确定页面A，则不遍历具体元素（保持图层整体恢复）
-            if (!pageA) continue;
-
-            // 构建页面A在该图层上的顶层对象快速查找表（仅顶层 pageItems）
-            var pageItemMap = {};
-            try {
-                var topItems = layer.pageItems;
-                for (var p = 0; p < topItems.length; p++) {
-                    var ti = topItems[p];
-                    // 确保该顶层对象位于页面A
-                    try {
-                        if (ti.parentPage && ti.parentPage.id === pageA.id) {
-                            pageItemMap[ti.id] = true;
-                        }
-                    } catch(e) {}
-                }
-            } catch(e) {
-                // 若获取 pageItems 失败，则跳过具体恢复
-                continue;
-            }
-
-            // 仅遍历并恢复属于页面A 的那些状态（避免遍历整层所有元素状态）
+            // 恢复该页面上的 items（现在 items 已经是过滤过的）
             for (var j = 0; j < layerState.items.length; j++) {
                 var itemState = layerState.items[j];
                 if (!itemState) continue;
-                if (!pageItemMap[itemState.id]) continue; // 不是页面A上的顶层对象，跳过
                 try {
                     restoreItemState(itemState, layer);
                 } catch(e) {
