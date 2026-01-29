@@ -1,8 +1,8 @@
 // LP翻译稿处理工具
 // 该脚本用于处理LP翻译稿，将文本插入到InDesign文档中，并根据分组应用样式
 // 作者：几千块
-// 日期：20260107
-var version = "2.5";
+// 日期：20260129
+var version = "2.51";
 #include "../Library/KTUlib.jsx"
 // 声明全局变量
 var totalPages = 0;
@@ -237,9 +237,7 @@ function ensureEnoughPages(requiredPageCount) {
     }
 }
 // 将百分比坐标转换为绝对坐标
-function convertPercentToAbsoluteCoordinates(page, xPercent, yPercent) {
-    var pageWidth = page.bounds[3] - page.bounds[1]; // 页面宽度
-    var pageHeight = page.bounds[2] - page.bounds[0]; // 页面高度
+function convertPercentToAbsoluteCoordinates(pageWidth, pageHeight, xPercent, yPercent) {
     var x = pageWidth * parseFloat(xPercent);
     var y = pageHeight * parseFloat(yPercent);
     return [x, y];
@@ -313,7 +311,9 @@ function insertTextOnPageByTxtEntry(entry) {
     }
 
     // 将坐标百分比转换为绝对坐标
-    var coordinates = convertPercentToAbsoluteCoordinates(page, entry.position[0], entry.position[1]);
+    var pageWidth = page.bounds[3] - page.bounds[1]; // 页面宽度
+    var pageHeight = page.bounds[2] - page.bounds[0]; // 页面高度
+    var coordinates = convertPercentToAbsoluteCoordinates(pageWidth, pageHeight, entry.position[0], entry.position[1]);
     var textFrame = page.textFrames.add();
     textFrame_x = 10;//设置文本框大小
     textFrame_y = 25;
