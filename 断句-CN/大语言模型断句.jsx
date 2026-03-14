@@ -50,6 +50,7 @@ function DoalltextFrames(textFrames) {
         var textFrame = textFrames[i];
         var content = textFrame['parentStory']['contents'];
         content = content.replace(/[\r\n]/g, ""); // 移除换行符
+        // content = content.replace(/\r/g, "<BR>").replace(/\n/g, "\\n"); // 保留原文断句
         
         // 写入当前文本框内容并添加换行
         inputFile.write(content + "\n");
@@ -65,7 +66,7 @@ function DoalltextFrames(textFrames) {
     // 等待用户确认脚本是否完成
     var w = new Window("dialog", "提示");
     w.orientation = "column";
-    var msg = w.add("statictext", undefined, "!!!!请等待弹窗!!!!\n未弹窗或断句失败请选择No。\n大模型断句耗时较久，请耐心等待。\n大模型可能会修改译文语序变得通顺，\n但可能不符合原意注意校对。\n弹窗后点击“Yes”替换断句结果，点击“No”退出。", {multiline: true});
+    var msg = w.add("statictext", undefined, "!!!!请等待弹窗!!!!\n未弹窗或断句失败请选择No。\n大模型断句耗时较久，请耐心等待。\n弹窗后点击“Yes”替换断句结果，点击“No”退出。", {multiline: true});
     msg.characters = 40;
     msg.graphics.font = ScriptUI.newFont(msg.graphics.font.name, msg.graphics.font.style, 24); // 放大字号
     var btnGroup = w.add("group");
@@ -94,8 +95,8 @@ function DoalltextFrames(textFrames) {
     // 遍历每个文本框，更新内容
     for (var i = 0; i < textFrames.length && i < contentLines.length; i++) {
 
-        // 将\r转换为真正的换行符
-        var processedContent = contentLines[i].replace(/\\r/g, "\n");
+        // 将\r和<BR>转换为真正的换行符
+        var processedContent = contentLines[i].replace(/\\r/g, "\n").replace(/<BR>/g, "\n");
         
         // 更新文本框内容
         textFrames[i]['parentStory']['contents'] = processedContent || '';

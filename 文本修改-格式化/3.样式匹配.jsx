@@ -1,4 +1,4 @@
-var version = "1.22";
+var version = "1.23";
 #include "../Library/KTUlib.jsx"
 
 // 主入口
@@ -38,7 +38,7 @@ function main() {
         var ui = buildUI(fontList, sizeList, config, styleCheck.charStyleNames, styleCheck.paraStyleNames);
 
         // 6. UI事件绑定
-        bindUIEvents(ui, fontList, sizeList, config, textFrames, styleCheck.charStyle, styleCheck.paraStyle);
+        bindUIEvents(ui, fontList, sizeList, config, textFrames, styleCheck);
         
         // 7. 显示UI
         var result = ui.win.show();
@@ -46,11 +46,9 @@ function main() {
             return null;
         }
         if (result === 1) {
-            var charStyle = styleCheck.charStyle;
-            var paraStyle = styleCheck.paraStyle;
             saveConfigFile(config);
-            // 应用样式
-            KTUDoScriptAsUndoable(function() {applyStyles(textFrames, config, charStyle, paraStyle)} , "样式匹配");
+            // 应用样式（使用哈希表优化）
+            KTUDoScriptAsUndoable(function() {applyStylesOptimized(textFrames, config, styleCheck)} , "样式匹配");
             //用Grep查找清除花括号{}中的内容
             KTUDoScriptAsUndoable(function() {ClearBrackets(textFrames)}, "清除花括号");
         }
@@ -60,7 +58,7 @@ function main() {
     }
 }
 
-// 检查字符样式和段落样式数量，并输出样式名称列表
+// 检查字符样式和段落样式数量，并输出样式名称列表，同时构建哈希表
 function checkStyleCount() {
     var doc = app.activeDocument;
     var charStyleCount = 0;
@@ -69,6 +67,8 @@ function checkStyleCount() {
     var paraStyleNames = [];
     var charStyle = [];
     var paraStyle = [];
+    var charStyleHashMap = {};  // 哈希表：样式名(���名) -> 样式对象
+    var paraStyleHashMap = {};  // 哈希表：样式名(组名) -> 样式对象
 
     // 递归统计字符样式，带分组
     function countCharStyles(styles, groupName) {
@@ -88,6 +88,8 @@ function checkStyleCount() {
                     charStyleNames.push(name);
                     // 存对象，包含样式和分组名
                     charStyle.push({ style: CStyle, groupName: group });
+                    // 同时构建哈希表
+                    charStyleHashMap[name] = CStyle;
             }
         }
     }
@@ -112,6 +114,10 @@ function checkStyleCount() {
                     }
                     paraStyleNames.push(name);
                     paraStyle.push({style: PStyle, groupName: group});
+                    // 同时构建哈希表
+                    paraStyleHashMap[name] = PStyle;
+                    // 也存储纯样式名以便模糊匹配
+                    paraStyleHashMap[styles[i].name] = PStyle;
                 }
             }
         }
@@ -128,7 +134,9 @@ function checkStyleCount() {
         charStyleNames: charStyleNames,
         paraStyleNames: paraStyleNames,
         charStyle: charStyle,
-        paraStyle: paraStyle
+        paraStyle: paraStyle,
+        charStyleHashMap: charStyleHashMap,
+        paraStyleHashMap: paraStyleHashMap
     };
 }
 
@@ -480,7 +488,7 @@ function buildUI(fontList, sizeList, config, charStyleNames, paraStyleNames) {
 }
 
 // 绑定UI事件
-function bindUIEvents(ui, fontList, sizeList, config, textFrames, charStyle, paraStyle) {
+function bindUIEvents(ui, fontList, sizeList, config, textFrames, styleCheck) {
     // 确定按钮
     ui.okBtn.onClick = function () {
         // 保存配置
@@ -499,13 +507,6 @@ function bindUIEvents(ui, fontList, sizeList, config, textFrames, charStyle, par
             }
         }
         ui.win.close(1);
-    return {
-            config: config,
-            charStyle: charStyle,
-            paraStyle: paraStyle,
-            fontList: fontList,
-            sizeList: sizeList,
-    };
     };
     // 取消按钮
     ui.cancelBtn.onClick = function () {
@@ -793,6 +794,138 @@ function applyStyles(textFrames, config, charStyleNames, paraStyleNames) {
                     }
                 }
                 sizeIdx++;
+            }
+
+            // 更新进度条
+            progressWin.progressBar.value = i + 1;
+            progressLabel.text = "正在处理 " + (i + 1) + " / " + textFrames.length;
+        }
+
+        // 关闭进度条窗口
+        progressWin.close();
+    } catch (e) {
+        alert("应用样式时发生错误：" + e.message);
+    }
+}
+
+// 应用样式（哈希表优化版本）
+function applyStylesOptimized(textFrames, config, styleCheck) {
+    try {
+        var charStyleHashMap = styleCheck.charStyleHashMap;
+        var paraStyleHashMap = styleCheck.paraStyleHashMap;
+        
+        // 步骤1: 构建 [字体名] -> [样式对象] 的哈希表
+        var fontToStyleMap = {};
+        var sizeToStyleMap = {};
+        
+        // 遍历config中所有键，找出font_X格式但不包含font_style_的键
+        for (var key in config) {
+            if (config.hasOwnProperty(key)) {
+                if (key.indexOf("font_") === 0 && key.indexOf("font_style_") === -1) {
+                    var fontName = config[key];
+                    var idx = key.substring(5);
+                    var styleName = config["font_style_" + idx];
+                    
+                    if (fontName && styleName && styleName !== "[无]") {
+                        var styleObj = charStyleHashMap[styleName];
+                        if (styleObj) {
+                            fontToStyleMap[fontName] = styleObj;
+                        }
+                    }
+                }
+                // 处理字号映射
+                if (key.indexOf("size_") === 0 && key.indexOf("size_style_") === -1) {
+                    var sizeName = config[key];
+                    var idx = key.substring(5);
+                    var styleName = config["size_style_" + idx];
+                    
+                    if (sizeName && styleName) {
+                        var styleObj = paraStyleHashMap[styleName];
+                        if (styleObj) {
+                            sizeToStyleMap[sizeName] = styleObj;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 添加进度条窗口
+        var progressWin = new Window("palette", "正在应用样式...", undefined, {closeButton: false});
+        progressWin.preferredSize = [400, 80];
+        progressWin.progressBar = progressWin.add("progressbar", undefined, 0, textFrames.length);
+        progressWin.progressBar.preferredSize = [380, 24];
+        var progressLabel = progressWin.add("statictext", undefined, "正在处理 0   /" + textFrames.length);
+        progressLabel.preferredSize = [380, 24]; 
+        progressWin.show();
+
+        // 步骤2: 遍历文本框，通过哈希表直接查找并应用样式
+        for (var i = 0; i < textFrames.length; i++) {
+            var story = textFrames[i].parentStory;
+            if (!story) continue;
+            var txt = story.contents;
+
+            // 从文本中提取字体名 {字体：xxx}
+            var fontMatch = txt.match(/\{字体：([^}]+)\}/);
+            if (fontMatch && fontMatch[1]) {
+                var extractedFontName = fontMatch[1];
+                
+                // 直接通过哈希表查找样式对象
+                var styleObj = fontToStyleMap[extractedFontName];
+                
+                // 如果精确匹配失败，尝试模糊匹配
+                if (!styleObj) {
+                    for (var configFontName in fontToStyleMap) {
+                        if (fontToStyleMap.hasOwnProperty(configFontName)) {
+                            if (extractedFontName.indexOf(configFontName) !== -1 || 
+                                configFontName.indexOf(extractedFontName) !== -1) {
+                                styleObj = fontToStyleMap[configFontName];
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                // 应用字符样式
+                if (styleObj) {
+                    try {
+                        story.appliedCharacterStyle = styleObj;
+                    } catch (e) {}
+                }
+            }
+
+            // 处理字号-段落样式
+            var sizeMatch = txt.match(/\{字号：([^}]+)\}/);
+            if (sizeMatch && sizeMatch[1]) {
+                var sizeName = sizeMatch[1];
+                
+                // 直接通过哈希表查找
+                var paraStyle = sizeToStyleMap[sizeName];
+                
+                // 如果找不到，尝试模糊匹配最接近的字号
+                if (!paraStyle) {
+                    var sizeNum = parseFloat(sizeName);
+                    if (!isNaN(sizeNum)) {
+                        var minDiff = 99999;
+                        for (var styleName in paraStyleHashMap) {
+                            if (paraStyleHashMap.hasOwnProperty(styleName)) {
+                                var psNum = parseFloat(styleName);
+                                if (!isNaN(psNum)) {
+                                    var diff = Math.abs(psNum - sizeNum);
+                                    if (diff < minDiff) {
+                                        minDiff = diff;
+                                        paraStyle = paraStyleHashMap[styleName];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (paraStyle) {
+                    try {
+                        story.appliedParagraphStyle = paraStyle;
+                    } catch (e) {}
+                }
             }
 
             // 更新进度条

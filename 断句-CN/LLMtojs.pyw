@@ -31,20 +31,20 @@ DEFAULT_APIS = {
 # 默认模型列表
 DEFAULT_MODELS = {
     "Ollama": ["deepseek-v3.2:cloud"],
-    "OpenAI": ["gpt-4o", "gpt-3.5-turbo"],
-    "Doubao": ["doubao-seed-1-6-251015"],
+    "OpenAI": ["gpt-4o", "gpt-5.2"],
+    "Doubao": ["doubao-seed-2-0-pro-260215"],
     "DeepSeek": ["deepseek-chat"],
     "Qianwen": ["qwen-plus", "qwen-max"],
     "Baidu": ["ernie-x1.1-preview"],
     "Tencent": ["hunyuan-2.0-instruct-20251111"],
-    "Zhipu": ["glm-4.7"],
+    "Zhipu": ["glm-5"],
     "Gemini": ["gemini-3-flash-preview"]
 }
 
 # 系统提示词
 DEFAULT_SYSTEM_PROMPT = (
     "You are a sentence-splitting assistant. For the given line of raw Chinese text, "
-    "split it into natural sentences with \\r. Consider sentence-final punctuation, morphemes, "
+    "split it into natural sentences with <BR>. Consider sentence-final punctuation, morphemes, "
     "and avoid breaking words or meaningful units. Place commas appropriately at the "
     "end of clauses when natural. Keep sentences balanced in length where possible. "
     "Short fragments should be kept as-is (do not force splits). Do not change the original punctuation marks."
@@ -54,8 +54,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "Line 57: 听说我家附近的寺庙有驱鬼的业务，于是我特地前来拜访。"
     "Line 58: 你知道马是从什么时候开始出现在人类历史中的吗?"
     "Example Output:"
-    "听说\\r我家附近的寺庙\\r有驱鬼的业务，\\r于是我特地\\r前来拜访。"
-    "你知道\\r马是从什么时候\\r开始出现在人类历史中的吗？"
+    "听说<BR>我家附近的寺庙<BR>有驱鬼的业务，<BR>于是我特地<BR>前来拜访。"
+    "你知道<BR>马是从什么时候<BR>开始出现在人类历史中的吗？"
 )
 
 class App:
@@ -422,6 +422,7 @@ class App:
                     "model": model,
                     "prompt": prompt,
                     "stream": False,
+                    "think": self.think_mode_var.get(),
                     "keep_alive": 60
                 }
                 resp = requests.post(api_url, json=payload, timeout=120)
@@ -435,7 +436,9 @@ class App:
                 payload = {
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.0
+                    "temperature": 0.7,
+                    "enable_thinking": self.think_mode_var.get(),
+                    "thinking": {"type": "enabled" if self.think_mode_var.get() else None}
                 }
                 resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
@@ -502,7 +505,7 @@ class App:
 
     def validate_line(self, original, processed):
         original = original.strip()
-        processed_clean = processed.replace('\\r', '').strip()
+        processed_clean = processed.replace('<BR>', '').replace('\\r','').strip()
         if len(original) > 13 and original == processed: 
             return False, "断句后内容与原文相同，原文："+original
         if original != processed_clean: 
