@@ -17,7 +17,7 @@
 
 // ==================== 依赖引入 ====================
 // 引入JSON解析库（ES3兼容）
-#include "../../Library/json2.js"
+#include "json2.js"
 
 // ==================== 全局变量 ====================
 var SCRIPT_VERSION = "1.0.0";
@@ -1876,7 +1876,7 @@ function callPythonSegmentationWithResult(textFrames) {
         if (config.segmentation.pythonScriptPath) {
             pythonScript = new File(config.segmentation.pythonScriptPath);
         } else {
-            pythonScript = new File(scriptPath + "../../../断句-CN/jieba_pytojs.pyw");
+            pythonScript = new File(scriptPath + "jieba_pytojs.pyw");
         }
         
         // 检查Python脚本是否存在

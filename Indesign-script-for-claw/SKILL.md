@@ -46,7 +46,7 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting]
 ## 第二类：漫画自动排版脚本调用
 - 现有脚本：`manga_layout.jsx`，功能包括创建新文档、设置页面尺寸、新建图层、导入图像、导入LabelPlus格式TXT稿件、匹配字体和字号。
 - 配置文件：`manga_layout_config.json`，包含：
-  - `indtPath`：InDesign模板路径。
+  - `indtPath`：indt模板路径。
   - `templatePath`：样式模板路径。
   - `artFolderPath`：漫画图片文件夹路径。
   - `lpTxtPath`：LabelPlus TXT稿件路径。
@@ -66,6 +66,7 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting]
 - **安全性**：避免潜在的安全风险，如文件覆盖、权限问题。
 - **可维护性**：代码应易读、易修改，支持未来扩展。
 - **测试**：生成脚本后，应在目标环境中测试，确保无错误。
+- **漫画脚本禁止直接修改**，只能修改配置文件`manga_layout_config.json`。
 
 # 示例 (Examples)
 - 用户需求："将所有文本框的字体改为Arial，大小12pt。"
@@ -78,3 +79,5 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting]
   - A: 检查InDesign是否运行，路径是否纯英文，日志文件是否有错误。
 - Q: 字体不匹配？
   - A: 确认`mapconfig`配置正确，字体已安装。
+- Q: 断句脚本不能运行？
+ - A: 确认脚本路径正确，pip install jieba
