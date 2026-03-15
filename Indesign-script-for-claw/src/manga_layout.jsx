@@ -1876,7 +1876,7 @@ function callPythonSegmentationWithResult(textFrames) {
         if (config.segmentation.pythonScriptPath) {
             pythonScript = new File(config.segmentation.pythonScriptPath);
         } else {
-            pythonScript = new File(scriptPath + "jieba_pytojs.pyw");
+            pythonScript = new File(scriptPath + "/jieba_pytojs.pyw");
         }
         
         // 检查Python脚本是否存在
