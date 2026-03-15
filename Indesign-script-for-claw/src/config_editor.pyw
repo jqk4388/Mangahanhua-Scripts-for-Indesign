@@ -20,11 +20,19 @@ class ConfigEditor:
         self.root = root
         self.root.title("Manga Layout Config Editor")
         self.config_path = config_path
+        self.save_path = config_path  # 默认保存路径与读取路径相同
         self.config = {}
         self.template_config = {}  # 存储模板配置
         self.widgets = {}
+        self.replacement_vars = []  # 初始化替换变量列表
+        self.style_rule_vars = []   # 初始化样式规则变量列表
         self.current_row = 0
         self.current_col = 0
+        
+        # 如果读取的是模板文件，保存路径改为 manga_layout_config.json
+        if config_path.endswith("manga_layout_config - template.json"):
+            script_dir = os.path.dirname(config_path)
+            self.save_path = os.path.join(script_dir, "manga_layout_config.json")
         
         # 加载模板配置
         self.load_template_config()
@@ -204,7 +212,8 @@ class ConfigEditor:
         else:
             final_config = user_config
         
-        save_path = path or self.config_path
+        # 使用 save_path（如果是模板文件，会保存为 manga_layout_config.json）
+        save_path = path or self.save_path
         try:
             with open(save_path, 'w', encoding='utf-8') as f:
                 json.dump(final_config, f, ensure_ascii=False, indent=4)
@@ -440,7 +449,7 @@ class ConfigEditor:
         
         fields = [("enabled", "启用"), ("lpTxtPath", "LP文本路径"), ("description", "说明"),
                   ("singleLineMode", "单行模式"), ("multiLineMode", "多行模式"),
-                  ("pageOffset", "页偏移"), ("matchByNumber", "按数字匹配"), ("fromStartToEnd", "从头到尾")]
+                  ("pageOffset", "页偏移"), ("matchByNumber", "按页码匹配"), ("fromStartToEnd", "从头到尾")]
         mid = (len(fields) + 1) // 2
         for i, f in enumerate(fields):
             self.create_field(col0 if i < mid else col1, f, "textImport")
