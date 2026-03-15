@@ -845,8 +845,9 @@ function placeImageOnPageWithResult(imageFile, page, layer) {
             }
         }
         
-        // 应用适合选项
-        applyFitOption(frame);
+        if(isFromTemplate==false){
+            applyFitOption(frame);
+        }
         
         return new StepResult(true, "放置成功", imageFile.name);
         
