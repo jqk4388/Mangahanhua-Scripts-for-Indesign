@@ -21,7 +21,8 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting, Exte
      - 遵循代码规范和兼容性要求。
      - 使用`cd src && cscript run.vbs`调用其执行。
    - **第二类：漫画排版**：
-     - 修改`manga_layout_config.json`配置文件。
+     - 修改`manga_layout_config - template.json`配置文件，添加必要的文件路径。
+     - 保存为`manga_layout_config.json`。
      - 运行`cd src && cscript run_manga_layout.vbs`。
      - 检查`manga_layout_vbs.log`日志。
 4. **测试验证**：运行后验证效果，若有错误，分析日志并修复。提供测试步骤。

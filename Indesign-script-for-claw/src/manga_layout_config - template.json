@@ -146,6 +146,21 @@
         "description": "填入jieba断句脚本的位置，如果是整个项目可不填。断句范围默认全文档"
     },
     
+    "ghostFrameAlignment": {
+        "enabled": true,
+        "jsonPath": "",
+        "autoFindJson": true,
+        "jsonFileNamePattern": "imgtrans_[folderName].json",
+        "createGhostFrames": true,
+        "alignTextFrames": true,
+        "alignRange": "entireDocument",
+        "hideGhostLayerAfterAlign": true,
+        "ghostLayerName": "[輔助定位] 完整矩形框",
+        "ghostColorName": "GhostGreen",
+        "ghostStrokeWeight": 1.5,
+        "description": "辅助方框对齐功能。jsonPath可自定义JSON路径，若为空则自动在图片文件夹中查找imgtrans_[文件夹名].json"
+    },
+    
     "output": {
         "saveDocument": true,
         "savePath": "",
