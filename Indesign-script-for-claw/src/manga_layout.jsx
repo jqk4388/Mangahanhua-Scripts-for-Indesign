@@ -1133,6 +1133,15 @@ function applyReplacements(content) {
             content = content.replace(regex, replacements[key]);
         }
     }
+        // 删除末尾的换行符（包括多个换行符）
+    while (content.length > 0 && (content.substr(content.length - 1) === "\n" || content.substr(content.length - 1) === "\r")) {
+        content = content.substr(0, content.length - 1);
+    }
+
+    // 检测文本最后一个字符是否为双引号，如果是则删除
+    if (content.length > 0 && content.substr(content.length - 1) === "\"") {
+        content = content.substr(0, content.length - 1);
+    }
     
     return content;
 }
