@@ -1,0 +1,1 @@
+cscript run.vbs

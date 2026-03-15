@@ -22,7 +22,7 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting, Exte
      - 使用`cd src && cscript run.vbs`调用其执行。
    - **第二类：漫画排版**：
      - 修改`manga_layout_config.json`配置文件。
-     - 运行`cd src && cscript run_manga_layout.vbs`执行`manga_layout.jsx`。
+     - 运行`cd src && cscript run_manga_layout.vbs`。
      - 检查`manga_layout_vbs.log`日志。
 4. **测试验证**：运行后验证效果，若有错误，分析日志并修复。提供测试步骤。
 5. **交付**：提供脚本文件、配置文件和使用说明。包括故障排除指南。
@@ -44,14 +44,16 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting, Exte
 - 错误处理：使用try-catch捕获错误，确保脚本稳定运行。
 
 ## 第二类：漫画自动排版脚本调用
-- 现有脚本：`manga_layout.jsx`，功能包括创建新文档、设置页面尺寸、新建图层、导入图像、导入LabelPlus格式TXT稿件、匹配字体和字号。
+- 收到漫画排版需求后，寻找图片，翻译稿，模板文件，配置文件的路径，在配置文件中填入正确的路径和参数，不能修改jsx脚本只能修改json配置。
 - 配置文件：`manga_layout_config.json`，包含：
-  - `indtPath`：indt模板路径。
-  - `styletemplatePath`：样式模板路径。
-  - `artFolderPath`：漫画图片文件夹路径。
-  - `lpTxtPath`：LabelPlus TXT稿件路径。
-  - `mapconfig`：字体映射INI配置文件路径。
-  - `baseFontSize`：基础字体大小，根据不同漫画调整，不知道的就问用户。
+  - `{templateDocument.indtPath}`：indt模板路径。
+  - `{documentSettings}`：文档页面设置参数。
+  - `{styleImport.styletemplatePath}`：样式模板路径。
+  - `{imageImport.artFolderPath}`：漫画图片文件夹路径。
+  - `{textImport.lpTxtPath}`：LabelPlus TXT稿件路径。
+  - `{fontMapping.mapconfig}`：字体映射INI配置文件路径。
+  - `{fontMappingbaseFontSize}`：基础字体大小，根据不同漫画调整，不知道的就问用户。
+  - `{segmentation.pythonScriptPath}`：jieba断句脚本路径。
 - 执行命令：`cd src && cscript run_manga_layout.vbs`。
 - 日志：`manga_layout_vbs.log`记录执行过程。
 - 默认配置：
