@@ -2,6 +2,10 @@
 """
 Manga Layout Config Editor
 用于编辑 manga_layout_config.json 的图形界面
+
+重构版本：实现配置与模板完全同步
+- 保存时加载模板结构，深度合并用户修改的值
+- 确保配置文件结构与模板完全一致
 """
 
 import tkinter as tk
@@ -9,6 +13,7 @@ from tkinter import ttk, filedialog, messagebox
 import json
 import os
 import subprocess
+import copy
 
 class ConfigEditor:
     def __init__(self, root, config_path):
@@ -16,9 +21,13 @@ class ConfigEditor:
         self.root.title("Manga Layout Config Editor")
         self.config_path = config_path
         self.config = {}
+        self.template_config = {}  # 存储模板配置
         self.widgets = {}
         self.current_row = 0
         self.current_col = 0
+        
+        # 加载模板配置
+        self.load_template_config()
         
         # 创建主框架和滚动区域
         self.main_frame = ttk.Frame(root, padding="3")
@@ -59,6 +68,27 @@ class ConfigEditor:
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
     
+    def get_template_path(self):
+        """获取模板文件路径"""
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        template_path = os.path.join(script_dir, "manga_layout_config - template.json")
+        if os.path.exists(template_path):
+            return template_path
+        return None
+    
+    def load_template_config(self):
+        """加载模板配置，作为保存时的基础结构"""
+        template_path = self.get_template_path()
+        if template_path:
+            try:
+                with open(template_path, 'r', encoding='utf-8') as f:
+                    self.template_config = json.load(f)
+            except Exception as e:
+                print(f"加载模板失败: {e}")
+                self.template_config = {}
+        else:
+            self.template_config = {}
+    
     def load_config(self):
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
@@ -70,12 +100,114 @@ class ConfigEditor:
             messagebox.showerror("错误", f"JSON解析错误: {e}")
             self.config = {}
     
+    def deep_merge(self, base, override):
+        """
+        深度合并两个字典
+        base: 模板配置（保留完整结构）
+        override: 用户修改的值（覆盖对应字段）
+        返回合并后的新字典，不修改原字典
+        """
+        result = copy.deepcopy(base)
+        
+        for key, value in override.items():
+            if key in result:
+                # 如果两边都是字典，递归合并
+                if isinstance(result[key], dict) and isinstance(value, dict):
+                    result[key] = self.deep_merge(result[key], value)
+                # 如果两边都是列表，直接替换（列表通常是完整配置）
+                elif isinstance(result[key], list) and isinstance(value, list):
+                    result[key] = copy.deepcopy(value)
+                else:
+                    # 其他类型直接覆盖
+                    result[key] = copy.deepcopy(value)
+            else:
+                # 模板中没有的字段也保留（向后兼容）
+                result[key] = copy.deepcopy(value)
+        
+        return result
+    
+    def collect_values(self):
+        """
+        收集所有控件的值，返回一个完整的配置字典
+        这个字典只包含用户修改的字段，用于与模板合并
+        """
+        user_config = copy.deepcopy(self.template_config) if self.template_config else {}
+        
+        for widget_key, (widget_type, var) in self.widgets.items():
+            keys = widget_key.split('.')
+            value = var.get()
+            
+            if widget_type == 'bool':
+                value = value == "true"
+            elif widget_type == 'number':
+                try:
+                    value = float(value) if '.' in value else int(value)
+                except ValueError:
+                    value = 0
+            elif widget_type == 'list':
+                try:
+                    value = json.loads(value)
+                except:
+                    value = []
+            
+            self.set_nested_value_in_dict(user_config, keys, value)
+        
+        # 收集replacements
+        replacements = {}
+        for row, var_orig, var_new in self.replacement_vars:
+            orig = var_orig.get()
+            new = var_new.get()
+            if orig:
+                replacements[orig] = new
+        if "textImport" not in user_config:
+            user_config["textImport"] = {}
+        user_config["textImport"]["replacements"] = replacements
+        
+        # 收集styleRules
+        style_rules = []
+        for row, var_enabled, var_match, var_style in self.style_rule_vars:
+            style_rules.append({
+                "match": var_match.get(),
+                "style": var_style.get(),
+                "enabled": var_enabled.get() == "true"
+            })
+        user_config["textImport"]["styleRules"] = style_rules
+        
+        return user_config
+    
+    def set_nested_value_in_dict(self, config_dict, keys, value):
+        """在嵌套字典中设置值，自动创建中间层级"""
+        d = config_dict
+        for key in keys[:-1]:
+            if key not in d:
+                d[key] = {}
+            d = d[key]
+        d[keys[-1]] = value
+    
     def save_config(self, path=None):
-        self.collect_values()
+        """
+        保存配置：实现模板完全同步
+        1. 收集UI中的所有值
+        2. 重新加载模板（获取最新结构）
+        3. 深度合并模板和用户值
+        4. 保存完整的配置
+        """
+        # 重新加载模板，确保使用最新结构
+        self.load_template_config()
+        
+        # 收集用户修改的值
+        user_config = self.collect_values()
+        
+        # 如果有模板，以模板为基础合并用户值
+        if self.template_config:
+            final_config = self.deep_merge(self.template_config, user_config)
+        else:
+            final_config = user_config
+        
         save_path = path or self.config_path
         try:
             with open(save_path, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, ensure_ascii=False, indent=4)
+                json.dump(final_config, f, ensure_ascii=False, indent=4)
             messagebox.showinfo("成功", f"配置已保存到: {save_path}")
         except Exception as e:
             messagebox.showerror("错误", f"保存失败: {e}")
@@ -90,6 +222,8 @@ class ConfigEditor:
             self.save_config(path)
     
     def reload_config(self):
+        """重新加载配置和模板"""
+        self.load_template_config()  # 重新加载模板
         self.load_config()
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
@@ -412,55 +546,6 @@ class ConfigEditor:
         path = filedialog.askdirectory()
         if path:
             var.set(path)
-    
-    def collect_values(self):
-        """收集所有控件的值并更新config"""
-        for widget_key, (widget_type, var) in self.widgets.items():
-            keys = widget_key.split('.')
-            value = var.get()
-            
-            if widget_type == 'bool':
-                value = value == "true"
-            elif widget_type == 'number':
-                try:
-                    value = float(value) if '.' in value else int(value)
-                except ValueError:
-                    value = 0
-            elif widget_type == 'list':
-                try:
-                    value = json.loads(value)
-                except:
-                    value = []
-            
-            self.set_nested_value(keys, value)
-        
-        # 收集replacements
-        replacements = {}
-        for row, var_orig, var_new in self.replacement_vars:
-            orig = var_orig.get()
-            new = var_new.get()
-            if orig:
-                replacements[orig] = new
-        self.config["textImport"]["replacements"] = replacements
-        
-        # 收集styleRules
-        style_rules = []
-        for row, var_enabled, var_match, var_style in self.style_rule_vars:
-            style_rules.append({
-                "match": var_match.get(),
-                "style": var_style.get(),
-                "enabled": var_enabled.get() == "true"
-            })
-        self.config["textImport"]["styleRules"] = style_rules
-    
-    def set_nested_value(self, keys, value):
-        """设置嵌套字典的值"""
-        d = self.config
-        for key in keys[:-1]:
-            if key not in d:
-                d[key] = {}
-            d = d[key]
-        d[keys[-1]] = value
 
 
 def main():
@@ -470,13 +555,16 @@ def main():
     if not os.path.exists(config_path):
         jsonname = "manga_layout_config.json"
         config_path = os.path.join(script_dir, jsonname)
-        if not os.path.exists(config_path):
-            messagebox.showerror("错误", f"未找到配置文件: {jsonname} 或 manga_layout_config - template.json")
-        return
     
+    # 先创建根窗口，以便能显示错误消息
     root = tk.Tk()
     root.geometry("650x750")
     root.minsize(500, 400)
+    
+    if not os.path.exists(config_path):
+        messagebox.showerror("错误", f"未找到配置文件:\nmanga_layout_config - template.json\n或 manga_layout_config.json")
+        root.destroy()
+        return
     
     # 设置紧凑样式
     style = ttk.Style()
