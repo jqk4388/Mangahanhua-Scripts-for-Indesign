@@ -312,10 +312,10 @@ class ConfigEditor:
         ttk.Label(row, text=label, width=18, anchor='w', font=('', 8)).pack(side=tk.LEFT)
         
         # 根据类型创建控件
-        widget_key = f"{parent_key}.{key}"
+        widget_key = f"{parent_key}.{key}" if parent_key else key
         
         if isinstance(value, bool):
-            var = tk.StringVar(value=str(value))
+            var = tk.StringVar(value=str(value).lower())
             cb = ttk.Combobox(row, textvariable=var, values=["true", "false"], width=10, state="readonly")
             cb.pack(side=tk.LEFT, fill=tk.X, expand=True)
             self.widgets[widget_key] = ('bool', var)
@@ -525,7 +525,7 @@ class ConfigEditor:
         row = ttk.Frame(parent)
         row.pack(fill=tk.X, pady=1)
         
-        var_enabled = tk.StringVar(value=str(rule.get("enabled", True)))
+        var_enabled = tk.StringVar(value=str(rule.get("enabled", True)).lower())
         var_match = tk.StringVar(value=rule.get("match", ""))
         var_style = tk.StringVar(value=rule.get("style", ""))
         
