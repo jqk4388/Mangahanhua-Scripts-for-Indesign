@@ -59,7 +59,7 @@ Sub Main()
     
     ' Set script file path
     Dim jsxPath
-    jsxPath = scriptPath & "\manga_layout.jsx"
+    jsxPath = scriptPath & "\manga_layout.jsxbin"
     
     ' Check if script file exists
     If Not fso.FileExists(jsxPath) Then
