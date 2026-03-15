@@ -303,9 +303,9 @@ class ConfigEditor:
         
         # 获取值
         value = self.config
-        full_key = parent_key
-        for k in parent_key.split('.'):
-            value = value.get(k, {})
+        if parent_key:  # 只有当 parent_key 非空时才遍历
+            for k in parent_key.split('.'):
+                value = value.get(k, {})
         value = value.get(key, "") if isinstance(value, dict) else ""
         
         # 标签
