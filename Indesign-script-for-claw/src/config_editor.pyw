@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json
 import os
+import subprocess
 
 class ConfigEditor:
     def __init__(self, root, config_path):
@@ -46,6 +47,7 @@ class ConfigEditor:
         self.button_frame = ttk.Frame(root, padding="3")
         self.button_frame.pack(fill=tk.X, side=tk.BOTTOM)
         
+        ttk.Button(self.button_frame, text="执行脚本", command=self.run_manga_layout, width=10).pack(side=tk.LEFT, padx=2)
         ttk.Button(self.button_frame, text="保存", command=self.save_config, width=8).pack(side=tk.RIGHT, padx=2)
         ttk.Button(self.button_frame, text="另存为...", command=self.save_as, width=8).pack(side=tk.RIGHT, padx=2)
         ttk.Button(self.button_frame, text="重新加载", command=self.reload_config, width=8).pack(side=tk.RIGHT, padx=2)
@@ -95,6 +97,20 @@ class ConfigEditor:
         self.current_row = 0
         self.current_col = 0
         self.create_widgets()
+    
+    def run_manga_layout(self):
+        """执行 manga_layout.vbs 脚本"""
+        vbs_path = os.path.join(os.path.dirname(self.config_path), "run_manga_layout.vbs")
+        if not os.path.exists(vbs_path):
+            messagebox.showerror("错误", f"脚本文件未找到: {vbs_path}")
+            return
+        
+        try:
+            subprocess.Popen(["cscript", vbs_path], 
+                           cwd=os.path.dirname(vbs_path),
+                           creationflags=subprocess.CREATE_NEW_CONSOLE)
+        except Exception as e:
+            messagebox.showerror("错误", f"启动脚本失败: {e}")
     
     def add_group(self, parent, title, key, fields, sub_groups=None):
         """添加一个配置组，使用两列布局"""
