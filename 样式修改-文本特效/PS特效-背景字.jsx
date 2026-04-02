@@ -554,20 +554,73 @@ function buildPhotoshopWorkerScript() {
             if (!imgFile.exists) {
                 throw 'Image file not found: ' + params.linkPath;
             }
+            var isPDF = imgFile.name.toLowerCase().indexOf('.pdf') > -1;
             var docRef = null;
-            try {
-                docRef = app.open(imgFile);
-            } catch (eOpen) {
-                // 无法直接打开某些格式，尝试抛出错误
-                throw eOpen;
-            }
-            // 如果模式是 Bitmap，则转换为 Grayscale
-            try {
-                if (docRef.mode === DocumentMode.BITMAP) {
-                    docRef.changeMode(ChangeMode.GRAYSCALE);
+
+            function applyLevelsFromBlack10(doc) {
+                try {
+                    if (!doc) return;
+                    // Ensure doc is active for layer operations
+                    var prevDoc = app.activeDocument;
+                    app.activeDocument = doc;
+                    try {
+                        var targetLayer = null;
+                        try { targetLayer = doc.activeLayer; } catch (e) { targetLayer = null; }
+                        if (!targetLayer && doc.layers.length > 0) targetLayer = doc.layers[0];
+                        if (!targetLayer && doc.artLayers.length > 0) targetLayer = doc.artLayers[0];
+                        if (targetLayer && typeof targetLayer.adjustLevels === 'function') {
+                            targetLayer.adjustLevels(10, 255, 1.0, 0, 255);
+                        } else if (typeof doc.activeLayer !== 'undefined' && doc.activeLayer && typeof doc.activeLayer.adjustLevels === 'function') {
+                            doc.activeLayer.adjustLevels(10, 255, 1.0, 0, 255);
+                        }
+                    } catch (eLayer) {
+                        // 兼容旧版本或其他情况，尝试 ActionManager 作为兜底
+                        try {
+                            var idLvls = charIDToTypeID("Lvls");
+                            var desc = new ActionDescriptor();
+                            desc.putEnumerated(charIDToTypeID("presetKind"), charIDToTypeID("presetKindType"), charIDToTypeID("presetKindCustom"));
+                            var list = new ActionList();
+                            var desc1 = new ActionDescriptor();
+                            desc1.putDouble(charIDToTypeID("Rd  "), 10);
+                            desc1.putDouble(charIDToTypeID("Bl  "), 255);
+                            desc1.putDouble(charIDToTypeID("Gry "), 1);
+                            desc1.putDouble(charIDToTypeID("Blck"), 0);
+                            desc1.putDouble(charIDToTypeID("Wht "), 255);
+                            list.putObject(charIDToTypeID("LvlA"), desc1);
+                            desc.putList(charIDToTypeID("Adjs"), list);
+                            executeAction(idLvls, desc, DialogModes.NO);
+                        } catch (e2) {
+                            // 最后仍忽略
+                        }
+                    }
+                    if (prevDoc) app.activeDocument = prevDoc;
+                } catch (e) {
+                    // 忽略色阶失败
                 }
-            } catch (eMode) {
-                // 忽略不能转换的错误
+            }
+
+            if (isPDF) {
+                // 先打开链接 PDF(底层)，并转换为灰度、1200 dpi 8位
+                var pdfOpts = new PDFOpenOptions();
+                pdfOpts.mode = OpenDocumentMode.GRAYSCALE;
+                pdfOpts.resolution = 1200;
+                try { pdfOpts.page = 1; } catch (e) {}
+                try { pdfOpts.crop = CropTo.CROPBOX; } catch (e) {}
+                docRef = app.open(imgFile, pdfOpts);
+                try { docRef.bitsPerChannel = BitsPerChannelType.EIGHT; } catch (e) {}
+                applyLevelsFromBlack10(docRef);
+            } else {
+                try {
+                    docRef = app.open(imgFile);
+                } catch (eOpen) {
+                    throw eOpen;
+                }
+                // 如果模式是 Bitmap，则转换为 Grayscale
+                try {
+                    if (docRef.mode === DocumentMode.BITMAP) {
+                        docRef.changeMode(ChangeMode.GRAYSCALE);
+                    }
+                } catch (eMode) {}
             }
             // 如果存在导出的矢量文件（来自 InDesign 编组导出），优先将其作为 PDF 打开并把所有图层复制到当前打开的背景文档中
             try {
@@ -575,27 +628,32 @@ function buildPhotoshopWorkerScript() {
                     var placeFile = File(params.frameInfo.exportedPath);
                     if (placeFile.exists) {
                         try {
-                            // 打开 PDF 时尽量使用出血裁剪并选择第 1 页、CMYK 模式
+                            // 打开 ID 导出的组 PDF：作品框裁剪，1200dpi，这里不改变 docRef 模式（先前已处理链接PDF）
                             var pdfOpts = new PDFOpenOptions();
                             try { pdfOpts.page = 1; } catch (e) {}
-                            // 尝试使用出血裁剪（不同 PS 版本枚举名可能不同），失败则忽略
-                            try { pdfOpts.crop = CropTo.BLEEDBOX; } catch (e) { try { pdfOpts.crop = CropTo.BLEED; } catch (e2) {} }
-                            try { pdfOpts.mode = OpenDocumentMode.CMYK; } catch (e) {}
-                            // 打开 PDF
+                            try { pdfOpts.crop = CropTo.CROPBOX; } catch (e) {}
+                            pdfOpts.resolution = 1200;
+                            try { pdfOpts.mode = OpenDocumentMode.GRAYSCALE; } catch (e) {}
                             var pdfDoc = app.open(placeFile, pdfOpts);
-                            // 尽量设置为 8 位
                             try { pdfDoc.bitsPerChannel = BitsPerChannelType.EIGHT; } catch (e) {}
-                            // 将 PDF 文档的所有顶级图层复制到目标图片文档（docRef）中
+                            applyLevelsFromBlack10(pdfDoc);
+
+                            // 将 PDF 文档的所有顶级图层复制到目标图片文档（docRef）中，需确保复制后图层在最上层，链接 PDF 在下层
                             try {
-                                // 使用从上到下复制，保留图层结构
                                 for (var li = 0; li < pdfDoc.layers.length; li++) {
-                                    try { pdfDoc.layers[li].duplicate(docRef, ElementPlacement.PLACEATEND); } catch (eDup) {}
+                                    try {
+                                        var newLayer = pdfDoc.layers[li].duplicate(docRef, ElementPlacement.PLACEATBEGINNING);
+                                        // 再确认置顶（可兼容不同 API 语义）
+                                        if (newLayer && newLayer.move) {
+                                            try { newLayer.move(docRef, ElementPlacement.PLACEATBEGINNING); } catch (eMove) {}
+                                        }
+                                    } catch (eDup) {}
                                 }
                             } catch (eDupAll) {}
-                            // 关闭 PDF，不保存任何修改
+
                             try { pdfDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {}
                         } catch (eOpenPdf) {
-                            // 如果直接以 PDFOpenOptions 打开失败，回退到原来的 place 方法（smart object）
+                            // 如果打开 ID 编组 PDF 失败，回退为直接智能对象放置（保底）
                             try {
                                 var idPlc = charIDToTypeID('Plc ');
                                 var descPlc = new ActionDescriptor();
@@ -800,28 +858,37 @@ function buildPhotoshopWorkerScript() {
             // 决定保存: 如果原文件是 PSD 或 TIF 则覆盖保存，否则另存为 PSD
             var origName = imgFile.name;
             var lower = origName.toLowerCase();
-            var saveAsPSD = true;
-            if (lower.indexOf('.psd') > -1 || lower.indexOf('.tif') > -1 || lower.indexOf('.tiff') > -1) {
-                // 尝试覆盖保存原文件
-                try {
-                    var saveFile = imgFile;
-                    var psdSaveOptions = new PhotoshopSaveOptions();
-                    // 保存为 PSD 或覆盖 TIFF：对 TIFF 需要 TIFF 保存选项，简化为 PSD 覆盖
-                    docRef.save();
-                    saveAsPSD = false;
-                } catch (eSave) {
-                    saveAsPSD = true;
-                }
-            }
-
             var newPath = imgFile.fullName;
-            if (saveAsPSD) {
-                // 另存为同名 PSD
-                var psdFile = File(imgFile.path + '/' + imgFile.name.replace(/\.[^\.]+$/, '') + '.psd');
-                var psdSaveOptions = new PhotoshopSaveOptions();
-                psdSaveOptions.layers = true;
-                docRef.saveAs(psdFile, psdSaveOptions, true);
-                newPath = psdFile.fullName;
+            if (isPDF) {
+                // 保存为 TIFF LZW
+                var tiffFile = File(imgFile.path + '/' + imgFile.name.replace(/\.[^\.]+$/, '') + '.tif');
+                var tiffSaveOptions = new TiffSaveOptions();
+                tiffSaveOptions.imageCompression = TIFFEncoding.TIFFLZW;
+                docRef.saveAs(tiffFile, tiffSaveOptions, true);
+                newPath = tiffFile.fullName;
+            } else {
+                var saveAsPSD = true;
+                if (lower.indexOf('.psd') > -1 || lower.indexOf('.tif') > -1 || lower.indexOf('.tiff') > -1) {
+                    // 尝试覆盖保存原文件
+                    try {
+                        var saveFile = imgFile;
+                        var psdSaveOptions = new PhotoshopSaveOptions();
+                        // 保存为 PSD 或覆盖 TIFF：对 TIFF 需要 TIFF 保存选项，简化为 PSD 覆盖
+                        docRef.save();
+                        saveAsPSD = false;
+                    } catch (eSave) {
+                        saveAsPSD = true;
+                    }
+                }
+
+                if (saveAsPSD) {
+                    // 另存为同名 PSD
+                    var psdFile = File(imgFile.path + '/' + imgFile.name.replace(/\.[^\.]+$/, '') + '.psd');
+                    var psdSaveOptions = new PhotoshopSaveOptions();
+                    psdSaveOptions.layers = true;
+                    docRef.saveAs(psdFile, psdSaveOptions, true);
+                    newPath = psdFile.fullName;
+                }
             }
 
             // 关闭文档

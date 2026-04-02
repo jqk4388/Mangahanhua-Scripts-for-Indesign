@@ -116,7 +116,7 @@ Function GetInDesignApplication()
     
     Dim indApp
     Dim version, versions
-    versions = Array("2025", "2024", "2023", "2022", "2021", "2020", "CC 2019", "CC 2018")
+    versions = Array("2026", "2025", "2024", "2023", "2022", "2021", "2020", "CC 2019", "CC 2018")
     
     ' Try to get running instance
     For Each version In versions

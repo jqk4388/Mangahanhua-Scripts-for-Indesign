@@ -18,7 +18,7 @@ function main() {
 
     // 1. 清除舊結果
     removeGhostItems(doc, GHOST_LABEL);
-    var oldLayerNames = ["[輔助定位] 幽靈靶心", "[輔助定位] 幽靈矩形", "[輔助定位] 完整矩形框", "GhostFrames"];
+    var oldLayerNames = ["[辅助涂白] 完整矩形框"];
     for (var L = 0; L < oldLayerNames.length; L++) {
         var oldL = doc.layers.itemByName(oldLayerNames[L]);
         if (oldL.isValid) {
@@ -27,24 +27,15 @@ function main() {
         }
     }
 
-    // 2. 準備綠色
-    var colorName = "GhostGreen";
+    // 2. 準備白色
+    var colorName = "Paper";
     var ghostColor = doc.colors.itemByName(colorName);
-    if (!ghostColor.isValid) {
-        ghostColor = doc.colors.add({
-            name: colorName,
-            model: ColorModel.PROCESS,
-            space: ColorSpace.RGB,
-            colorValue: [0, 255, 0]
-        });
-    }
 
     // 3. 建立圖層
-    var layerName = "[輔助定位] 完整矩形框";
+    var layerName = "[辅助涂白] 完整矩形框";
     var ghostLayer = doc.layers.add({name: layerName});
     ghostLayer.move(LocationOptions.AT_BEGINNING); // 最頂層
-    ghostLayer.printable = false;
-    ghostLayer.layerColor = UIColors.GREEN; 
+    ghostLayer.layerColor = UIColors.GOLD; 
     ghostLayer.locked = false; // 暫時解鎖以寫入
 
     // 4. 讀取與生成
@@ -81,7 +72,31 @@ function main() {
         return;
     }
 
+    // 收集页面图片名和 JSON 键
+    var pageImageNames = [];
     var pages = doc.pages;
+    for (var i = 0; i < pages.length; i++) {
+        var pageImageName = getPageImageName(pages[i]);
+        if (pageImageName) {
+            pageImageNames.push(pageImageName.replace(/\.[^\.]+$/, ""));
+        } else {
+            pageImageNames.push(null);
+        }
+    }
+
+    var jsonKeysOriginal = [];
+    for (var key in jsonData.pages) {
+        if (jsonData.pages.hasOwnProperty(key)) {
+            jsonKeysOriginal.push(key);
+        }
+    }
+
+    // 检查长度是否匹配
+    if (pageImageNames.length !== jsonKeysOriginal.length) {
+        alert("页面数量 (" + pageImageNames.length + ") 与 JSON 中的页面数量 (" + jsonKeysOriginal.length + ") 不匹配！无法按顺序匹配。");
+        return;
+    }
+
     var totalRects = 0;
     
     // 建立進度條
@@ -93,26 +108,19 @@ function main() {
     for (var i = 0; i < pages.length; i++) {
         progressBar.value = i + 1;
         var page = pages[i];
-        var pageImageName = getPageImageName(page);
-        if (!pageImageName) continue;
+        if (!pageImageNames[i]) continue;
 
-        var matchedKey = findKeyInJson(jsonData.pages, pageImageName.replace(/\.[^\.]+$/, ""));
+        var matchedKey = jsonKeysOriginal[i];
         
-        if (matchedKey) {
-            // 從 image_info 取得該頁的寬高
-            var imgInfo = jsonData['image_info'][matchedKey];
-            if (!imgInfo) {
-                // 嘗試用完整檔名
-                imgInfo = jsonData['image_info'][pageImageName];
-            }
-            if (!imgInfo || !imgInfo.width || !imgInfo.height) {
-                continue; // 跳過沒有尺寸資訊的頁面
-            }
-            
-            var textBlocks = jsonData.pages[matchedKey];
-            if (textBlocks && textBlocks.length > 0) {
-                totalRects += createRects(page, textBlocks, ghostLayer, imgInfo.width, imgInfo.height, ghostColor, GHOST_LABEL);
-            }
+        // 從 image_info 取得該頁的寬高
+        var imgInfo = jsonData['image_info'][matchedKey];
+        if (!imgInfo || !imgInfo.width || !imgInfo.height) {
+            continue; // 跳過沒有尺寸資訊的頁面
+        }
+        
+        var textBlocks = jsonData.pages[matchedKey];
+        if (textBlocks && textBlocks.length > 0) {
+            totalRects += createRects(page, textBlocks, ghostLayer, imgInfo.width, imgInfo.height, ghostColor, GHOST_LABEL);
         }
     }
     
@@ -124,7 +132,7 @@ function main() {
     // 只在獨立執行時顯示 alert
     var skipDialogs = app.extractLabel("MasterRunner.skipDialogs");
     if (skipDialogs !== "true") {
-        alert("v11 完成！\n已生成 " + totalRects + " 個綠色實線框。\n圖層已鎖定。\n\n【如何實現中心對中心吸附？】\n請確認：\n1. [檢視] > [靠齊文件格點] 必須關閉。\n2. [偏好設定] > [智能輔助線] > [對齊物件中心] 必須勾選。\n\n拖曳時看到十字交叉線即代表中心對齊。");
+        alert("v11 完成！\n已生成 " + totalRects + " 個白色涂白框。\n圖層已鎖定。");
     }
 }
 
@@ -148,13 +156,13 @@ function createRects(page, blocks, layer, origW, origH, colorObj, label) {
         var y2 = pix[3] * scaleY;
         var x2 = pix[2] * scaleX;
 
-        var tf = page.textFrames.add(layer);
+        var tf = page.rectangles.add(layer);
         tf.label = label;
         tf.geometricBounds = [y1, x1, y2, x2];
         
-        tf.fillColor = "None";
-        tf.strokeColor = colorObj; 
-        tf.strokeWeight = 1.5;
+        tf.fillColor = colorObj;
+        tf.strokeColor = "None"; 
+        tf.strokeWeight = 0;
         tf.textWrapPreferences.textWrapMode = TextWrapModes.NONE;
         created++;
     }
@@ -185,18 +193,8 @@ function getPageImageName(page) {
     var graphics = page.allGraphics;
     for (var j = 0; j < graphics.length; j++) {
         var g = graphics[j];
-        if (g.parent.geometricBounds[1] >= -0.1) { 
+        if (g.parent.geometricBounds[1]) { 
             if (g.itemLink) return g.itemLink.name;
-        }
-    }
-    return null;
-}
-
-function findKeyInJson(pagesObj, baseName) {
-    for (var key in pagesObj) {
-        if (pagesObj.hasOwnProperty(key)) {
-            var keyBase = key.replace(/\.[^\.]+$/, "");
-            if (keyBase === baseName) return key;
         }
     }
     return null;
