@@ -15,7 +15,7 @@ function main() {
     }
     var doc = app.activeDocument;
     var GHOST_LABEL = "GhostFrame";
-
+    doc.viewPreferences.rulerOrigin = RulerOrigin.PAGE_ORIGIN;
     // 1. 清除舊結果
     removeGhostItems(doc, GHOST_LABEL);
     var oldLayerNames = ["[辅助涂白] 完整矩形框"];
@@ -161,7 +161,6 @@ function createRects(page, blocks, layer, origW, origH, colorObj, label) {
         tf.geometricBounds = [y1, x1, y2, x2];
         
         tf.fillColor = colorObj;
-        tf.strokeColor = "None"; 
         tf.strokeWeight = 0;
         tf.textWrapPreferences.textWrapMode = TextWrapModes.NONE;
         created++;

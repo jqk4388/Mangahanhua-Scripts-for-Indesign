@@ -979,7 +979,7 @@ function importLabelPlusTextWithResult() {
         }
         
         doc.activeLayer = textLayer;
-        doc.viewPreferences.rulerOrigin = RulerOrigin.pageOrigin;
+        doc.viewPreferences.rulerOrigin = RulerOrigin.PAGE_ORIGIN;
         
         // 插入文本
         var insertedCount = 0;
@@ -1990,6 +1990,7 @@ function runGhostFrameAlignmentWithResult() {
         }
         
         // 3. 生成辅助方框
+        doc.viewPreferences.rulerOrigin = RulerOrigin.PAGE_ORIGIN;
         var ghostResult = { created: 0 };
         if (ghostConfig.createGhostFrames) {
             ghostResult = createGhostFramesWithResult(jsonData, ghostConfig);
@@ -2083,7 +2084,7 @@ function createGhostFramesWithResult(jsonData, ghostConfig) {
         removeGhostItems(doc, GHOST_LABEL);
         
         // 清除旧的辅助图层
-        var oldLayerNames = ["[輔助定位] 幽靈靶心", "[輔助定位] 幽靈矩形", "[輔助定位] 完整矩形框", "GhostFrames"];
+        var oldLayerNames = ["[輔助定位] 完整矩形框"];
         for (var L = 0; L < oldLayerNames.length; L++) {
             var oldL = doc.layers.itemByName(oldLayerNames[L]);
             if (oldL.isValid) {
@@ -2112,30 +2113,46 @@ function createGhostFramesWithResult(jsonData, ghostConfig) {
         ghostLayer.layerColor = UIColors.GREEN;
         ghostLayer.locked = false; // 暂时解锁以写入
         
-        // 4. 为每个页面生成辅助方框
+        // 3. 收集页面图片名和 JSON 键（按顺序匹配）
+        var pageImageNames = [];
         var pages = doc.pages;
+        for (var pi = 0; pi < pages.length; pi++) {
+            var pageImgName = getPageImageNameForGhost(pages[pi]);
+            if (pageImgName) {
+                pageImageNames.push(pageImgName.replace(/\.[^\.]+$/, ""));
+            } else {
+                pageImageNames.push(null);
+            }
+        }
+
+        var jsonKeysOriginal = [];
+        for (var key in jsonData.pages) {
+            if (jsonData.pages.hasOwnProperty(key)) {
+                jsonKeysOriginal.push(key);
+            }
+        }
+
+        // 检查长度是否匹配
+        if (pageImageNames.length !== jsonKeysOriginal.length) {
+            logMessage("页面数量 (" + pageImageNames.length + ") 与 JSON 中的页面数量 (" + jsonKeysOriginal.length + ") 不匹配！无法按顺序匹配。");
+        }
+
+        // 4. 按顺序为每个页面生成辅助方框
         for (var i = 0; i < pages.length; i++) {
             var page = pages[i];
-            var pageImageName = getPageImageNameForGhost(page);
-            if (!pageImageName) continue;
-            
-            var matchedKey = findKeyInJsonPages(jsonData.pages, pageImageName.replace(/\.[^\.]+$/, ""));
-            
-            if (matchedKey) {
-                // 从 image_info 获取该页的宽高
-                var imgInfo = jsonData['image_info'][matchedKey];
-                if (!imgInfo) {
-                    // 尝试用完整档名
-                    imgInfo = jsonData['image_info'][pageImageName];
-                }
-                if (!imgInfo || !imgInfo.width || !imgInfo.height) {
-                    continue; // 跳过没有尺寸信息的页面
-                }
-                
-                var textBlocks = jsonData.pages[matchedKey];
-                if (textBlocks && textBlocks.length > 0) {
-                    created += createGhostRects(page, textBlocks, ghostLayer, imgInfo.width, imgInfo.height, ghostColor, GHOST_LABEL, ghostConfig);
-                }
+            if (!pageImageNames[i]) continue;
+
+            var matchedKey = jsonKeysOriginal[i];
+
+            // 从 image_info 获取该页的宽高
+            var imgInfo = jsonData['image_info'][matchedKey];
+            if (!imgInfo || !imgInfo.width || !imgInfo.height) {
+                continue; // 跳过没有尺寸信息的页面
+            }
+
+            var textBlocks = jsonData.pages[matchedKey];
+            if (textBlocks && textBlocks.length > 0) {
+                created += createGhostRects(page, textBlocks, ghostLayer, imgInfo.width, imgInfo.height, ghostColor, GHOST_LABEL, ghostConfig);
             }
         }
         
