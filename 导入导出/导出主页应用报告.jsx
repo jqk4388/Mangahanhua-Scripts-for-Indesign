@@ -14,11 +14,19 @@ function generateMasterPageReport() {
     report += "页面主页使用情况报告：\n";
     report += "----------------------------------------\n";
     
-    // 遍历所有页面
+    var masterPages = {};
     for (var i = 0; i < doc.pages.length; i++) {
         var page = doc.pages[i];
         var masterName = page.appliedMaster.name;
-        report += "页面 " + (i + 1) + " 使用的主页：" + masterName + "\n";
+        if (!masterPages[masterName]) {
+            masterPages[masterName] = [];
+        }
+        masterPages[masterName].push(i + 1);
+    }
+
+    for (var masterName in masterPages) {
+        report += "主页：" + masterName + "\n";
+        report += "页面 " + masterPages[masterName].join(",") + "\n";
     }
     
     // 保存报告到桌面
