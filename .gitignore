@@ -2,5 +2,5 @@
 _build
 .vscode
 *.log
-manga_layout_config.json
+manga_layout_config*.json
 *.pyc

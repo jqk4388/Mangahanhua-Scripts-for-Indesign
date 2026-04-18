@@ -605,7 +605,7 @@ function buildPhotoshopWorkerScript() {
                 pdfOpts.mode = OpenDocumentMode.GRAYSCALE;
                 pdfOpts.resolution = 1200;
                 try { pdfOpts.page = 1; } catch (e) {}
-                try { pdfOpts.crop = CropTo.CROPBOX; } catch (e) {}
+                pdfOpts.cropPage = CropToType.CROPBOX;
                 docRef = app.open(imgFile, pdfOpts);
                 try { docRef.bitsPerChannel = BitsPerChannelType.EIGHT; } catch (e) {}
                 applyLevelsFromBlack10(docRef);
@@ -631,7 +631,7 @@ function buildPhotoshopWorkerScript() {
                             // 打开 ID 导出的组 PDF：作品框裁剪，1200dpi，这里不改变 docRef 模式（先前已处理链接PDF）
                             var pdfOpts = new PDFOpenOptions();
                             try { pdfOpts.page = 1; } catch (e) {}
-                            try { pdfOpts.crop = CropTo.CROPBOX; } catch (e) {}
+                            pdfOpts.cropPage = CropToType.CROPBOX;
                             pdfOpts.resolution = 1200;
                             try { pdfOpts.mode = OpenDocumentMode.GRAYSCALE; } catch (e) {}
                             var pdfDoc = app.open(placeFile, pdfOpts);

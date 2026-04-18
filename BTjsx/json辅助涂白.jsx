@@ -161,7 +161,6 @@ function createRects(page, blocks, layer, origW, origH, colorObj, label) {
         tf.geometricBounds = [y1, x1, y2, x2];
         
         tf.fillColor = colorObj;
-        tf.strokeWeight = 0;
         tf.textWrapPreferences.textWrapMode = TextWrapModes.NONE;
         created++;
     }
@@ -192,9 +191,7 @@ function getPageImageName(page) {
     var graphics = page.allGraphics;
     for (var j = 0; j < graphics.length; j++) {
         var g = graphics[j];
-        if (g.parent.geometricBounds[1]) { 
-            if (g.itemLink) return g.itemLink.name;
-        }
+        if (g.itemLink) return g.itemLink.name;
     }
     return null;
 }

@@ -202,9 +202,7 @@ function getPageImageName(page) {
     var graphics = page.allGraphics;
     for (var j = 0; j < graphics.length; j++) {
         var g = graphics[j];
-        if (g.parent.geometricBounds[1]) { 
-            if (g.itemLink) return g.itemLink.name;
-        }
+        if (g.itemLink) return g.itemLink.name;
     }
     return null;
 }

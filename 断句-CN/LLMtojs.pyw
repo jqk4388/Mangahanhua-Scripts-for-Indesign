@@ -17,6 +17,7 @@ DEFAULT_OUTPUT = os.path.join(TMPDIR, "LLM_output.txt")
 
 # 默认API URLs
 DEFAULT_APIS = {
+    "LM Studio": "http://localhost:1234/v1/chat/completions",
     "Ollama": "http://localhost:11434/api/generate",
     "OpenAI": "https://api.openai.com/v1/chat/completions",
     "Doubao": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
@@ -25,7 +26,9 @@ DEFAULT_APIS = {
     "Baidu": "https://qianfan.baidubce.com/v2/chat/completions",
     "Tencent": "https://api.hunyuan.cloud.tencent.com/v1/chat/completions",
     "Zhipu": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-    "Gemini": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    "Gemini": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",
+    "MiniMax": "https://api.minimaxi.com/v1/chat/completions",
+    "OpenRouter": "https://openrouter.ai/api/v1/chat/completions"
 }
 
 # 默认模型列表
@@ -38,7 +41,10 @@ DEFAULT_MODELS = {
     "Baidu": ["ernie-x1.1-preview"],
     "Tencent": ["hunyuan-2.0-instruct-20251111"],
     "Zhipu": ["glm-5"],
-    "Gemini": ["gemini-3-flash-preview"]
+    "Gemini": ["gemini-3-flash-preview"],
+    "LM Studio": ["local-model"],
+    "MiniMax": ["MiniMax-M2.7"],
+    "OpenRouter": ["openrouter/free"]
 }
 
 # 系统提示词
@@ -74,6 +80,7 @@ class App:
         self.max_chars_var = tk.IntVar(value=4000)
         self.think_mode_var = tk.BooleanVar(value=False)
         self.prompt_var = tk.StringVar(value=DEFAULT_SYSTEM_PROMPT)
+        self.extra_params_var = tk.StringVar(value='{"think": false}')
         self.api_keys = {}  # 各平台的API Key
 
         # 配置
@@ -147,6 +154,9 @@ class App:
         ttk.Label(self.adv_panel, text="系统提示词:").grid(row=0, column=0, sticky="nw")
         ttk.Entry(self.adv_panel, textvariable=self.prompt_var, width=80).grid(row=0, column=1, sticky="we", padx=4)
 
+        ttk.Label(self.adv_panel, text="额外参数 (JSON):").grid(row=1, column=0, sticky="nw")
+        ttk.Entry(self.adv_panel, textvariable=self.extra_params_var, width=80).grid(row=1, column=1, sticky="we", padx=4)
+
         root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # 控制
@@ -192,7 +202,7 @@ class App:
         api_key = self.api_key_var.get().strip()
         
         # Ollama 不需要 API Key
-        if api_type != "Ollama" and (not api_url or not api_key):
+        if api_type != "Ollama" and api_type != "LM Studio" and (not api_url or not api_key):
             messagebox.showerror("错误", "请先填写API地址和Key")
             return
         elif api_type == "Ollama" and not api_url:
@@ -218,17 +228,16 @@ class App:
                 if resp.status_code == 200:
                     data = resp.json()
                     return [m["name"] for m in data.get("models", [])]
-            elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qianwen", "Zhipu","Baidu"]:
+            elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qianwen", "Tencent","Zhipu","Baidu", "LM Studio", "MiniMax", "OpenRouter"]:
                 models_url = api_url.replace("/chat/completions", "/models")
                 headers = {"Authorization": f"Bearer {api_key}"}
                 resp = requests.get(models_url, headers=headers, timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
                     return [m["id"] for m in data.get("data", [])]
-            elif api_type == "Tencent":
-                return DEFAULT_MODELS.get("Tencent", [])
             elif api_type == "Gemini":
-                resp = requests.get(f"{api_url}/models", headers={"x-goog-api-key": api_key}, timeout=5)
+                models_url = "https://generativelanguage.googleapis.com/v1beta/models"
+                resp = requests.get(models_url, params={"key": api_key}, timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
                     return [m["name"].split("/")[-1] for m in data.get("models", [])]
@@ -415,6 +424,13 @@ class App:
         api_key = self.api_key_var.get()
         model = self.model_var.get()
 
+        # 解析额外参数
+        extra_params = {}
+        try:
+            extra_params = json.loads(self.extra_params_var.get().strip() or "{}")
+        except json.JSONDecodeError:
+            print("额外参数JSON格式错误，使用默认值")
+
         print(f"调用API: {api_type}, 模型: {model}, URL: {api_url}")
         try:
             if api_type == "Ollama":
@@ -425,13 +441,14 @@ class App:
                     "think": self.think_mode_var.get(),
                     "keep_alive": 60
                 }
+                payload.update(extra_params)  # 合并额外参数
                 resp = requests.post(api_url, json=payload, timeout=120)
                 resp.raise_for_status()
                 data = resp.json()
                 response = data.get("response", "")
                 tokens = data.get("eval_count", 0)  # Ollama返回eval_count作为tokens
                 return response, tokens
-            elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qianwen", "Zhipu"]:
+            elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qianwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter"]:
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
                     "model": model,
@@ -440,6 +457,7 @@ class App:
                     "enable_thinking": self.think_mode_var.get(),
                     "thinking": {"type": "enabled" if self.think_mode_var.get() else None}
                 }
+                payload.update(extra_params)  # 合并额外参数
                 resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
                 data = resp.json()
@@ -452,6 +470,7 @@ class App:
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                 }
+                payload.update(extra_params)  # 合并额外参数
                 resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
                 data = resp.json()
@@ -465,6 +484,7 @@ class App:
                     "messages": [{"role": "user", "content": prompt}],
                     "enable_enhancement": True
                 }
+                payload.update(extra_params)  # 合并额外参数
                 resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
                 data = resp.json()
@@ -484,6 +504,7 @@ class App:
                         }
                     ]
                 }
+                payload.update(extra_params)  # 合并额外参数
                 resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
                 data = resp.json()
@@ -574,6 +595,7 @@ class App:
                 self.max_chars_var.set(data.get('max_chars', 4000))
                 self.think_mode_var.set(data.get('think_mode', False))
                 self.prompt_var.set(data.get('prompt', DEFAULT_SYSTEM_PROMPT))
+                self.extra_params_var.set(data.get('extra_params', '{"think": false}'))
                 self.on_api_type_changed()  # 更新模型列表和API Key
                 print("配置加载成功")
             except Exception as e:
@@ -590,7 +612,8 @@ class App:
             'task_size': self.task_size_var.get(),
             'max_chars': self.max_chars_var.get(),
             'think_mode': self.think_mode_var.get(),
-            'prompt': self.prompt_var.get()
+            'prompt': self.prompt_var.get(),
+            'extra_params': self.extra_params_var.get()
         }
         try:
             json_str = json.dumps(data, ensure_ascii=False)

@@ -1,61 +1,76 @@
-/* Go to Page.js
-
-    Works like the built-in "Go to Page" function, but also works for "backwards" (Left to Right) books. 
-    Uses the pageBinding setting in the document to determine which InDesign page to take you to. 
-    
-    For example, in a 200-page document:
-    | Input | Page Binding Setting | Final Page |
-    |-------|----------------------|------------|
-    |   40  |     Left to Right    |    161     |
-    |   40  |     Right to Left    |     40     |
-
-
-    Installation Instructions: https://github.com/saraoswald/Manga-Scripts/#how-to-use-scripts-in-indesign
-    
-    Last Updated: August 28, 2022
-*/
-
-
 var isLtR = app.documents[0].documentPreferences.pageBinding == PageBindingOptions.LEFT_TO_RIGHT;
 var doc = app.activeDocument;
 
 function myDisplayDialog() {
-    myDialog = app.dialogs.add({ name: "Go to Page" });
-    var selectedPageNumber;
-    var bookSize = parseInt(doc.pages.lastItem().name);
-    with(myDialog) {
-        with(dialogColumns.add()) {
-            var currentPageNum = parseInt(app.activeWindow.activePage.name) || 1;
-            var bookPageNum = isLtR ? bookSize - currentPageNum + 1 : currentPageNum;
-            selectedPageNumber = integerEditboxes.add({
-                editValue: bookPageNum,
-                minimumValue: parseInt(doc.pages.firstItem().name),
-                maximumValue: bookSize
-            });
+    if (!app.activeWindow || !app.activeWindow.activePage) {
+        alert('No active page available.');
+        return;
+    }
+
+    if (!doc || !doc.pages || doc.pages.length < 1) {
+        alert('No pages in the active document.');
+        return;
+    }
+
+    var bookSize = doc.pages.length;
+    var currentPageNum = app.activeWindow.activePage.documentOffset + 1;
+    var bookPageNum = isLtR ? bookSize - currentPageNum + 1 : currentPageNum;
+    var selectedPageNumber = null;
+
+    try {
+        var dialogWindow = new Window('dialog', 'Go to Page');
+        dialogWindow.alignChildren = 'left';
+        dialogWindow.add('statictext', undefined, 'Page number:');
+        var input = dialogWindow.add('edittext', undefined, bookPageNum.toString());
+        input.characters = 6;
+        input.active = true;
+
+        var buttonGroup = dialogWindow.add('group');
+        buttonGroup.alignment = 'right';
+        buttonGroup.add('button', undefined, 'OK', { name: 'ok' });
+        buttonGroup.add('button', undefined, 'Cancel', { name: 'cancel' });
+
+        if (dialogWindow.show() == 1) {
+            selectedPageNumber = parseInt(input.text, 10);
+        }
+    } catch (e) {
+        try {
+            var myDialog = app.dialogs.add({ name: 'Go to Page' });
+            with (myDialog) {
+                with (dialogColumns.add()) {
+                    selectedPageNumber = integerEditboxes.add({
+                        editValue: bookPageNum,
+                        minimumValue: 1,
+                        maximumValue: bookSize
+                    });
+                }
+            }
+            var myReturn = myDialog.show();
+            if (myReturn == true) {
+                selectedPageNumber = selectedPageNumber.editValue;
+            }
+            myDialog.destroy();
+        } catch (err) {
+            alert('Unable to create dialog: ' + err);
+            return;
         }
     }
-    var myReturn = myDialog.show();
-    if (myReturn == true) {
-        var needsReview = false;
 
-        if (selectedPageNumber.editValue < 1) {
-            alert('Please enter a valid page number');
-            needsReview = true;
-        }
-
-        if (!needsReview) {
-            var newPageNum = isLtR ? bookSize - selectedPageNumber.editValue + 1 : selectedPageNumber.editValue;
-            var newPage = doc.pages.itemByName(newPageNum.toString());
-
-            app.activeWindow.activePage = newPage.isValid ?
-                newPage :
-                (isLtR ? doc.pages.firstItem() : doc.pages.lastItem());
-        }
-
-        myDialog.destroy();
-    } else {
-        myDialog.destroy();
+    if (selectedPageNumber == null || isNaN(selectedPageNumber)) {
+        return;
     }
+
+    if (selectedPageNumber < 1 || selectedPageNumber > bookSize) {
+        alert('Please enter a valid page number');
+        return;
+    }
+
+    var newPageNum = isLtR ? bookSize - selectedPageNumber + 1 : selectedPageNumber;
+    var newPage = doc.pages.item(newPageNum - 1);
+
+    app.activeWindow.activePage = newPage.isValid ?
+        newPage :
+        (isLtR ? doc.pages.firstItem() : doc.pages.lastItem());
 }
 
 try {
