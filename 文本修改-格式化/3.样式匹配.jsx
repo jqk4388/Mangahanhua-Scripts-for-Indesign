@@ -1,4 +1,4 @@
-var version = "1.23";
+var version = "1.3";
 #include "../Library/KTUlib.jsx"
 
 // 主入口
