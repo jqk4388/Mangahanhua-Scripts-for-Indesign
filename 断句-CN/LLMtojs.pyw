@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import platform
 import base64
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 跨平台临时文件路径和默认文件名
@@ -33,10 +34,10 @@ DEFAULT_APIS = {
 
 # 默认模型列表
 DEFAULT_MODELS = {
-    "Ollama": ["deepseek-v3.2:cloud"],
+    "Ollama": ["deepseek-v4-flash:cloud"],
     "OpenAI": ["gpt-4o", "gpt-5.2"],
     "Doubao": ["doubao-seed-2-0-pro-260215"],
-    "DeepSeek": ["deepseek-chat"],
+    "DeepSeek": ["deepseek-v4-flash", "deepseek-v4-pro"],
     "Qianwen": ["qwen-plus", "qwen-max"],
     "Baidu": ["ernie-x1.1-preview"],
     "Tencent": ["hunyuan-2.0-instruct-20251111"],
@@ -448,7 +449,32 @@ class App:
                 response = data.get("response", "")
                 tokens = data.get("eval_count", 0)  # Ollama返回eval_count作为tokens
                 return response, tokens
-            elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qianwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter"]:
+            elif api_type == "DeepSeek":
+                # DeepSeek 新版 API 支持 thinking 和 reasoning_effort 等字段
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "thinking": {"type": "enabled" if self.think_mode_var.get() else "disabled"},
+                    "stream": False
+                }
+                # 如果用户在额外参数中设置了 reasoning_effort 或其他 DeepSeek 参数，会被合并
+                payload.update(extra_params)
+                resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
+                resp.raise_for_status()
+                data = resp.json()
+                # DeepSeek 的返回结构可能包含不同字段，优先尝试常见字段
+                response = ""
+                if isinstance(data, dict):
+                    response = data.get("response") or response
+                    if not response and data.get("choices"):
+                        try:
+                            response = data["choices"][0]["message"]["content"]
+                        except Exception:
+                            response = response
+                tokens = data.get("eval_count", data.get("usage", {}).get("total_tokens", 0) if isinstance(data, dict) else 0)
+                return response or "", tokens
+            elif api_type in ["OpenAI", "Doubao", "Qianwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter"]:
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
                     "model": model,
@@ -526,10 +552,26 @@ class App:
 
     def validate_line(self, original, processed):
         original = original.strip()
-        processed_clean = processed.replace('<BR>', '').replace('\\r','').strip()
-        if len(original) > 13 and original == processed: 
+        # 保留原始的processed版本用于不同比较策略
+        processed_clean = processed.replace('\\r','').strip()
+
+        # 如果原文包含空格，则允许 <BR> 替代空格
+        if ' ' in original:
+            # 将连续空白规范化为单个空格
+            orig_norm = re.sub(r"\\s+", ' ', original)
+            # 将 <BR> 视为空格，然后规范化
+            proc_norm = processed_clean.replace('<BR>', ' ')
+            proc_norm = re.sub(r"\\s+", ' ', proc_norm)
+            if orig_norm == proc_norm:
+                return True, ""
+
+        # 如果文本较长且返回与原文完全一致（未断句），判为失败
+        if len(original) > 13 and original == processed:
             return False, "断句后内容与原文相同，原文："+original
-        if original != processed_clean: 
+
+        # 默认将 <BR> 移除后与原文比较
+        proc_no_br = processed_clean.replace('<BR>', '')
+        if original != proc_no_br:
             return False, "断句后内容与原文不符，原文："+original
         return True, ""
 

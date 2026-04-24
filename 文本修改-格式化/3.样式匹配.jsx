@@ -645,6 +645,18 @@ function updateUIFromConfig(ui, config) {
                 iniFontKeys.push(fontName); // 添加到字体名称数组
             }
         }
+        // 辅助：解析样式字符串，提取 baseName 和可选的 groupName
+        function parseStyleString(styleStr) {
+            if (!styleStr) return {base: "", group: ""};
+            var base = styleStr;
+            var group = "";
+            var m = styleStr.match(/^\s*(.*?)\s*\((.*?)\)\s*$/);
+            if (m) {
+                base = m[1];
+                group = m[2];
+            }
+            return {base: base, group: group};
+        }
         // 遍历当前面板的行
         for (var idx = 0; idx < ui.leftRows.length; idx++) {
             var row = ui.leftRows[idx];
@@ -653,13 +665,26 @@ function updateUIFromConfig(ui, config) {
                 // 精确匹配
                 if (iniFontMap.hasOwnProperty(currentFontName)) {
                     var styleName = iniFontMap[currentFontName];
-                    if (styleName && row.dropdown.items.length > 0) {
-                        for (var k = 0; k < row.dropdown.items.length; k++) {
-                            if (row.dropdown.items[k].text == styleName) {
-                                row.dropdown.selection = k;
-                                break;
+                    // 解析 styleName，支持带分组的格式：样式名(分组)
+                    var parsed = parseStyleString(styleName);
+                    if (parsed.base && row.dropdown.items.length > 0) {
+                        var foundIdx = -1;
+                        // 如果指定了分组，优先精确匹配 base(group)
+                        if (parsed.group) {
+                            var full = parsed.base + "(" + parsed.group + ")";
+                            for (var k = 0; k < row.dropdown.items.length; k++) {
+                                if (row.dropdown.items[k].text == full) { foundIdx = k; break; }
                             }
                         }
+                        // 如果未找到，则匹配第一个同名的样式（即 '(' 前的名称相同）
+                        if (foundIdx < 0) {
+                            for (var k = 0; k < row.dropdown.items.length; k++) {
+                                var itemText = row.dropdown.items[k].text;
+                                var itemBase = itemText.split("(")[0];
+                                if (itemBase && itemBase.replace(/\s+$/,'') == parsed.base) { foundIdx = k; break; }
+                            }
+                        }
+                        if (foundIdx >= 0) row.dropdown.selection = foundIdx;
                     }
                 } else {
                     // 模糊匹配：查找ini中的字体名是否与当前字体名匹配
@@ -669,12 +694,24 @@ function updateUIFromConfig(ui, config) {
                         // 检查当前字体名是否包含ini中的字体名，或反之
                         if (currentFontName.indexOf(iniFontName) !== -1 || iniFontName.indexOf(currentFontName) !== -1) {
                             var styleName = iniFontMap[iniFontName];
-                            if (styleName && row.dropdown.items.length > 0) {
-                                for (var k = 0; k < row.dropdown.items.length; k++) {
-                                    if (row.dropdown.items[k].text == styleName) {
-                                        row.dropdown.selection = k;
-                                        break;
+                            var parsed = parseStyleString(styleName);
+                            if (parsed.base && row.dropdown.items.length > 0) {
+                                var foundIdx = -1;
+                                if (parsed.group) {
+                                    var full = parsed.base + "(" + parsed.group + ")";
+                                    for (var k = 0; k < row.dropdown.items.length; k++) {
+                                        if (row.dropdown.items[k].text == full) { foundIdx = k; break; }
                                     }
+                                }
+                                if (foundIdx < 0) {
+                                    for (var k = 0; k < row.dropdown.items.length; k++) {
+                                        var itemText = row.dropdown.items[k].text;
+                                        var itemBase = itemText.split("(")[0];
+                                        if (itemBase && itemBase.replace(/\s+$/,'') == parsed.base) { foundIdx = k; break; }
+                                    }
+                                }
+                                if (foundIdx >= 0) {
+                                    row.dropdown.selection = foundIdx;
                                 }
                             }
                             matched = true;
