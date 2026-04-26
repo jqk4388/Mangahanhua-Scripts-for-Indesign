@@ -1,7 +1,7 @@
 ---
 name: Indesign-script-for-claw
 description: 【SKILL】基于用户排版需求，自动生成适用于Adobe InDesign的脚本代码，实现批量化、风格化的排版。对漫画嵌字排版有超高适配能力，能够根据用户需求修改配置文件并调用相应脚本实现自动排版。支持Windows和Mac平台，兼容多种InDesign版本。
-version: 1.1.0
+version: 1.1.1
 author: 几千块
 tags: [InDesign, automation, scripting, layout, design, manga, typesetting, ExtendScript, JavaScript, Adobe]
 ---
@@ -17,14 +17,13 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting, Exte
 2. **需求分析**：解析用户需求，确定是通用排版脚本生成还是漫画自动化排版。若需求不明确，主动询问用户澄清。
 3. **脚本生成/配置修改**：
    - **第一类：通用脚本生成**：
-     - 生成`scriptRun.jsx`文件，无UI界面。
+     - 生成`scriptRun.jsx`文件。
      - 遵循代码规范和兼容性要求。
      - 使用`cd src && cscript run.vbs`调用其执行。
    - **第二类：漫画排版**：
-     - 修改`manga_layout_config - template.json`配置文件，添加必要的文件路径。
-     - 保存为`manga_layout_config.json`。
-     - 运行`cd src && cscript run_manga_layout.vbs`。
-     - 检查`manga_layout_vbs.log`日志。
+     - 执行`python config_editor.pyw set`修改配置文件，设置路径和参数。
+     - 执行`python config_editor.pyw run`调用漫画自动化脚本。
+     - 使用用户指定的配置文件`python config_editor.pyw -c C:/path/to/my_config.json run`。
 4. **测试验证**：运行后验证效果，若有错误，分析日志并修复。提供测试步骤。
 5. **交付**：提供脚本文件、配置文件和使用说明。包括故障排除指南。
 
@@ -35,7 +34,7 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting, Exte
   - 功能封装为函数，便于复用。
   - 严格使用InDesign官方API。
 - 兼容性要求：
-  - 禁用高级写法，使用基础实现：
+  - 禁用高级写法，使用ES3基础实现：
     - 不使用for...in等循环变体。
     - 不使用String.prototype.trim()。
     - 不使用JSON.stringify()。
@@ -45,49 +44,39 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting, Exte
 - 错误处理：使用try-catch捕获错误，确保脚本稳定运行。
 
 ## 第二类：漫画自动排版脚本调用
-- 收到漫画排版需求后，寻找图片，翻译稿，模板文件，配置文件的路径，在配置文件中填入正确的路径和参数，不能修改jsx脚本只能修改json配置。
-- 配置文件：`manga_layout_config.json`，包含：
-  - `{templateDocument.indtPath}`：indt模板路径。
-  - `{documentSettings}`：文档页面设置参数。
-  - `{styleImport.styletemplatePath}`：样式模板路径。
-  - `{imageImport.artFolderPath}`：漫画图片文件夹路径。
-  - `{textImport.lpTxtPath}`：LabelPlus TXT稿件路径。
-  - `{fontMapping.mapconfig}`：字体映射INI配置文件路径。
-  - `{fontMappingbaseFontSize}`：基础字体大小，根据不同漫画调整，不知道的就问用户。
-  - `{segmentation.pythonScriptPath}`：jieba断句脚本路径。
-- 执行命令：`cd src && cscript run_manga_layout.vbs`。
-- 日志：`manga_layout_vbs.log`记录执行过程。
-- 默认配置：
-  - 网络漫画：B6尺寸，无出血。
-  - 商业正版漫画（电子/实体书）：B6尺寸，出血3mm。
+- 收到漫画排版需求后，寻找图片文件夹、翻译稿，模板文件，配置文件的路径，并向用户确认，然后使用config_editor.pyw来修改配置文件。
+- 默认使用`manga_layout_config - template.json`中的设置。
+- 执行`python config_editor.pyw -h`来查看帮助信息。
+- 使用set来设置路径，如`python config_editor.pyw set imageImport.artFolderPath M:\汉化\`。
+- 使用save来保存配置，如`python config_editor.pyw save`。
+
 
 # 约束条件 (Constraints)
-- **路径要求**：VBS脚本路径必须为纯英文，无中文字符，否则执行失败。
-- **API使用**：仅使用InDesign官方API，不得编造不支持的功能。
+- **API使用**：仅使用InDesign官方API，不得编造不支持的功能，必须使用ES3风格。
 - **风格一致性**：生成的排版效果必须匹配用户提供的设计风格，不添加无关元素。
 - **平台兼容**：脚本兼容Windows和Mac，考虑InDesign版本差异（推荐CC 2023+）。
 - **安全性**：避免潜在的安全风险，如文件覆盖、权限问题。始终备份重要文件。
 - **可维护性**：代码应易读、易修改，支持未来扩展。使用清晰的变量命名和注释。
 - **测试**：生成脚本后，应在目标环境中测试，确保无错误。提供模拟测试选项。
-- **漫画脚本禁止直接修改**，只能修改配置文件`manga_layout_config.json`。
+- **漫画脚本和配置禁止直接修改**，只能通过配置编辑器修改。
 - **AI限制**：作为AI，不得生成有害或非法内容。所有代码必须符合Adobe使用条款。
 
 # 示例 (Examples)
 - 用户需求："将所有文本框的字体改为Arial，大小12pt。"
-  - 生成`scriptRun.jsx`，遍历文档文本框，应用样式。
+  - 生成`scriptRun.jsx`，遍历文档文本框，应用样式。执行`cd src && cscript run.vbs`。
 - 漫画排版："处理网络漫画，图片在folder1，稿件在file.txt，对应漫画模板在template.indt，样式模板在style.indd。"
-  - 修改`manga_layout_config.json`，设置路径，执行脚本。
+  - 执行`python config_editor.pyw set imageImport.artFolderPath folder1` `python config_editor.pyw set textImport.lpTxtPath file.txt` `python config_editor.pyw set templateDocument.indtPath template.indt` `python config_editor.pyw set styleImport.styletemplatePath style.indd` ，设置路径，执行脚本`python config_editor.pyw run`。
 - 用户需求："为所有图像添加边框。"
   - 生成脚本，遍历图像对象，应用边框样式。
 - 漫画排版："调整基础字体大小为10pt，用于商业漫画。"
-  - 修改配置文件中的`baseFontSize`，执行脚本。
+  - 执行`python config_editor.pyw set fontMapping.baseFontSize 10`。
 
 # 常见问题 (FAQ)
 - Q: 脚本不执行？
   - A: 检查InDesign是否运行，路径是否纯英文，日志文件是否有错误。确保VBS脚本有执行权限。
 - Q: 字体不匹配？
-  - A: 确认`mapconfig`配置正确，字体已安装。检查字体映射文件路径。
+  - A: 确认`fontMapping.mapconfig`配置正确，字体已安装。检查字体映射文件路径。
 - Q: 断句脚本不能运行？
- - A: 确认脚本路径正确，pip install jieba。确保Python环境配置正确。
-- Q: 如何自定义配置？
-  - A: 编辑`manga_layout_config.json`文件，根据需求调整参数。备份原文件以防出错。
+ - A: 确认脚本路径正确，`pip install jieba`。确保Python环境配置正确。
+- Q: 如何人工确认配置？
+  - A: `python config_editor.pyw -c my_config.json`文件，打开界面窗口人工修改配置。

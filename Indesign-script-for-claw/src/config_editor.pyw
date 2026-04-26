@@ -23,6 +23,7 @@ import json
 import os
 import subprocess
 import copy
+import shutil
 import argparse
 import sys
 
@@ -336,18 +337,43 @@ def cli_schema(args):
 
 
 def cli_run(args):
+    # Determine the config provided (via --config) or default
     config_path = args.config or find_default_config()
-    if not config_path:
+    if not config_path or not os.path.exists(config_path):
         print("错误: 配置文件未找到", file=sys.stderr)
         sys.exit(1)
+
+    # Locate run_manga_layout.vbs. Prefer the same directory as the config;
+    # fall back to the script directory if not found there.
     vbs_path = os.path.join(os.path.dirname(config_path), "run_manga_layout.vbs")
     if not os.path.exists(vbs_path):
-        print(f"错误: 脚本文件未找到: {vbs_path}", file=sys.stderr)
+        alt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_manga_layout.vbs")
+        if os.path.exists(alt):
+            vbs_path = alt
+        else:
+            print(f"错误: 脚本文件未找到: {vbs_path}", file=sys.stderr)
+            sys.exit(1)
+
+    vbs_dir = os.path.dirname(vbs_path)
+
+    # Copy the user-provided config to the VBS directory as manga_layout_config.json
+    target_config = os.path.join(vbs_dir, "manga_layout_config.json")
+    try:
+        # If the provided config is already the target, this is a no-op copy
+        shutil.copyfile(config_path, target_config)
+    except Exception as e:
+        print(f"错误: 复制配置文件到运行目录失败: {e}", file=sys.stderr)
         sys.exit(1)
-    subprocess.Popen(["cscript", vbs_path],
-                     cwd=os.path.dirname(vbs_path),
-                     creationflags=subprocess.CREATE_NEW_CONSOLE)
-    print(f"已启动脚本: {vbs_path}")
+
+    # Launch the VBS script in a new console
+    try:
+        subprocess.Popen(["cscript", vbs_path],
+                         cwd=vbs_dir,
+                         creationflags=subprocess.CREATE_NEW_CONSOLE)
+        print(f"已启动脚本: {vbs_path} (使用配置: {target_config})")
+    except Exception as e:
+        print(f"错误: 启动脚本失败: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def build_parser():

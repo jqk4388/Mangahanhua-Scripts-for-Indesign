@@ -22,6 +22,9 @@
 
 以下为本项目所有脚本按功能分类的完整列表：
 
+## AI代理嵌字使用的Skill
+安装方法`npx skills add  https://github.com/jqk4388/Mangahanhua-Scripts-for-Indesign --skill  Indesign-script-for-claw -g -y`
+
 ### 新增汉化专用脚本
 | 脚本名称 | 功能描述 |
 |---------|----------|
@@ -197,6 +200,7 @@
    ```
    C:\Users\xxx\AppData\Roaming\Adobe\InDesign\Version 20.0-J\zh_CN\Scripts\Scripts Panel
    ```
+   或者把文件夹的快捷方式复制到Scripts Panel目录。
 
 2. 确保 `Library/KTUlib.jsx` 与其他脚本处于同级或正确引用路径
 
