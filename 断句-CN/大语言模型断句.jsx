@@ -81,7 +81,7 @@ function DoalltextFrames(textFrames) {
         // 删除临时文件
         inputFile.remove();
         outputFile.remove();
-        throw new Error("用户取消，脚本终止。");
+        alert("操作已取消。");
     }
     
     // 读取处理后的文本

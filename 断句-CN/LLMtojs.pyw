@@ -34,7 +34,7 @@ DEFAULT_APIS = {
 
 # 默认模型列表
 DEFAULT_MODELS = {
-    "Ollama": ["deepseek-v4-flash:cloud"],
+    "Ollama": ["deepseek-v4-flash", "deepseek-v4-pro"],
     "OpenAI": ["gpt-4o", "gpt-5.2"],
     "Doubao": ["doubao-seed-2-0-pro-260215"],
     "DeepSeek": ["deepseek-v4-flash", "deepseek-v4-pro"],
@@ -76,6 +76,7 @@ class App:
         self.api_type_var = tk.StringVar(value="Ollama")
         self.api_var = tk.StringVar(value=DEFAULT_APIS["Ollama"])
         self.api_key_var = tk.StringVar(value="")
+        self.ollama_mode_var = tk.StringVar(value="Local")
         self.model_var = tk.StringVar(value="deepseek-v3.2:cloud")
         self.task_size_var = tk.IntVar(value=20)
         self.max_chars_var = tk.IntVar(value=4000)
@@ -124,6 +125,10 @@ class App:
         self.api_type_cb = ttk.Combobox(frame_params, textvariable=self.api_type_var, values=list(DEFAULT_APIS.keys()), state="readonly", width=15)
         self.api_type_cb.grid(row=0, column=1, sticky="w", padx=4)
         self.api_type_cb.bind("<<ComboboxSelected>>", self.on_api_type_changed)
+        ttk.Label(frame_params, text="Ollama 模式:").grid(row=0, column=2, sticky="w")
+        self.ollama_mode_cb = ttk.Combobox(frame_params, textvariable=self.ollama_mode_var, values=["Local", "Online"], state="readonly", width=12)
+        self.ollama_mode_cb.grid(row=1, column=2, sticky="w", padx=4)
+        self.ollama_mode_cb.bind("<<ComboboxSelected>>", self.on_ollama_mode_changed)
 
         ttk.Label(frame_params, text="API地址:").grid(row=1, column=0, sticky="w")
         ttk.Entry(frame_params, textvariable=self.api_var, width=50).grid(row=1, column=1, sticky="we", padx=4)
@@ -192,23 +197,45 @@ class App:
 
     def on_api_type_changed(self, event=None):
         api_type = self.api_type_var.get()
-        self.api_var.set(DEFAULT_APIS.get(api_type, ""))
+        # 如果是 Ollama，根据本地/在线模式设置默认 URL
+        if api_type == "Ollama":
+            mode = self.ollama_mode_var.get()
+            if mode == "Online":
+                self.api_var.set("https://ollama.com/api/generate")
+            else:
+                self.api_var.set(DEFAULT_APIS.get("Ollama", ""))
+            # 显示 Ollama 模式选择
+            self.ollama_mode_cb.grid()
+            key_name = f"Ollama_{mode}"
+            self.api_key_var.set(self.api_keys.get(key_name, ""))
+        else:
+            self.api_var.set(DEFAULT_APIS.get(api_type, ""))
+            # 隐藏 Ollama 模式选择
+            try:
+                self.ollama_mode_cb.grid_forget()
+            except Exception:
+                pass
+            self.api_key_var.set(self.api_keys.get(api_type, ""))
         self.model_cb['values'] = DEFAULT_MODELS.get(api_type, [])
         self.model_var.set(DEFAULT_MODELS.get(api_type, [""])[0] if DEFAULT_MODELS.get(api_type) else "")
-        self.api_key_var.set(self.api_keys.get(api_type, ""))
 
     def load_models(self):
         api_type = self.api_type_var.get()
         api_url = self.api_var.get().strip()
         api_key = self.api_key_var.get().strip()
         
-        # Ollama 不需要 API Key
-        if api_type != "Ollama" and api_type != "LM Studio" and (not api_url or not api_key):
+        # Ollama 本地服务不需要 API Key，但 Ollama 在线服务 (ollama.com) 需要
+        if api_type not in ("Ollama", "LM Studio") and (not api_url or not api_key):
             messagebox.showerror("错误", "请先填写API地址和Key")
             return
-        elif api_type == "Ollama" and not api_url:
-            messagebox.showerror("错误", "请先填写API地址")
-            return
+        elif api_type == "Ollama":
+            if not api_url:
+                messagebox.showerror("错误", "请先填写API地址")
+                return
+            # 如果是 Ollama 在线模式，要求提供 API Key
+            if self.ollama_mode_var.get() == "Online" and not api_key:
+                messagebox.showerror("错误", "使用 Ollama 在线服务需要填写 API Key")
+                return
 
         print(f"加载模型列表: {api_type}")
         models = self.fetch_models(api_type, api_url, api_key)
@@ -224,11 +251,25 @@ class App:
     def fetch_models(self, api_type, api_url, api_key):
         try:
             if api_type == "Ollama":
+                # Ollama 本地或在线的模型标签接口通常为 /api/tags
                 tags_url = api_url.replace("/api/generate", "/api/tags")
-                resp = requests.get(tags_url, timeout=5)
+                headers = {}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                resp = requests.get(tags_url, timeout=5, headers=headers)
                 if resp.status_code == 200:
                     data = resp.json()
-                    return [m["name"] for m in data.get("models", [])]
+                    # 支持不同字段名返回（models 或 tags）
+                    models = []
+                    if isinstance(data, dict):
+                        if data.get("models"):
+                            models = [m.get("name") if isinstance(m, dict) else m for m in data.get("models", [])]
+                        elif data.get("tags"):
+                            models = [t.get("name") if isinstance(t, dict) else t for t in data.get("tags", [])]
+                    elif isinstance(data, list):
+                        # 有些返回直接是列表
+                        models = [m.get("name") if isinstance(m, dict) else m for m in data]
+                    return models
             elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qianwen", "Tencent","Zhipu","Baidu", "LM Studio", "MiniMax", "OpenRouter"]:
                 models_url = api_url.replace("/chat/completions", "/models")
                 headers = {"Authorization": f"Bearer {api_key}"}
@@ -443,12 +484,25 @@ class App:
                     "keep_alive": 60
                 }
                 payload.update(extra_params)  # 合并额外参数
-                resp = requests.post(api_url, json=payload, timeout=120)
+                headers = {}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
                 data = resp.json()
-                response = data.get("response", "")
-                tokens = data.get("eval_count", 0)  # Ollama返回eval_count作为tokens
-                return response, tokens
+                # Ollama 可能返回不同结构，优先尝试常见字段
+                response = ""
+                if isinstance(data, dict):
+                    response = data.get("response") or data.get("text") or response
+                    if not response and data.get("choices"):
+                        try:
+                            response = data["choices"][0]["message"]["content"]
+                        except Exception:
+                            pass
+                elif isinstance(data, str):
+                    response = data
+                tokens = data.get("eval_count", data.get("usage", {}).get("total_tokens", 0) if isinstance(data, dict) else 0)
+                return response or "", tokens
             elif api_type == "DeepSeek":
                 # DeepSeek 新版 API 支持 thinking 和 reasoning_effort 等字段
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -631,7 +685,9 @@ class App:
                 data = json.loads(decrypted)
                 self.api_type_var.set(data.get('api_type', 'Ollama'))
                 self.api_var.set(data.get('api_url', DEFAULT_APIS['Ollama']))
+                # 兼容保存的 api_keys 可能包含 Ollama_Local / Ollama_Online
                 self.api_keys = data.get('api_keys', {})
+                self.ollama_mode_var.set(data.get('ollama_mode', 'Local'))
                 self.model_var.set(data.get('model', 'deepseek-v3.2:cloud'))
                 self.task_size_var.set(data.get('task_size', 20))
                 self.max_chars_var.set(data.get('max_chars', 4000))
@@ -645,11 +701,17 @@ class App:
 
     def save_config(self):
         # 更新当前平台的API Key
-        self.api_keys[self.api_type_var.get()] = self.api_key_var.get()
+        # 对 Ollama 使用带模式的 key 名称
+        if self.api_type_var.get() == 'Ollama':
+            key_name = f"Ollama_{self.ollama_mode_var.get()}"
+            self.api_keys[key_name] = self.api_key_var.get()
+        else:
+            self.api_keys[self.api_type_var.get()] = self.api_key_var.get()
         data = {
             'api_type': self.api_type_var.get(),
             'api_url': self.api_var.get(),
             'api_keys': self.api_keys,
+            'ollama_mode': self.ollama_mode_var.get(),
             'model': self.model_var.get(),
             'task_size': self.task_size_var.get(),
             'max_chars': self.max_chars_var.get(),
@@ -669,6 +731,17 @@ class App:
     def on_closing(self):
         self.save_config()
         self.root.destroy()
+
+    def on_ollama_mode_changed(self, event=None):
+        # 当切换 Ollama 模式时，更新 API 地址和 API Key 显示
+        if self.api_type_var.get() == "Ollama":
+            mode = self.ollama_mode_var.get()
+            if mode == "Online":
+                self.api_var.set("https://ollama.com/api/generate")
+            else:
+                self.api_var.set(DEFAULT_APIS.get("Ollama", ""))
+            key_name = f"Ollama_{mode}"
+            self.api_key_var.set(self.api_keys.get(key_name, ""))
 
 if __name__ == "__main__":
     root = tk.Tk()
