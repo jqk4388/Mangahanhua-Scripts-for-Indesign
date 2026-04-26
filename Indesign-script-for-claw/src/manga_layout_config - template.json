@@ -1,0 +1,188 @@
+{
+    "version": "1.0.0",
+    "description": "Manga Layout Automation Configuration",
+    
+    "templateDocument": {
+        "enabled": true,
+        "indtPath": "",
+        "description": "填入Indesign模板文件indt路径"
+    },
+    
+    "documentSettings": {
+        "pageWidth": 128,
+        "pageHeight": 182,
+        "unit": "mm",
+        "pageBinding": "rightToLeft",
+        "startPage": 1,
+        "totalPages": 0,
+        "bleedTop": 0,
+        "bleedBottom": 0,
+        "bleedInside": 0,
+        "bleedOutside": 0,
+        "margin": {
+            "top": 10,
+            "bottom": 10,
+            "inside": 10,
+            "outside": 10
+        }
+    },
+    
+    "layers": {
+        "art": {
+            "name": "Art",
+            "visible": true,
+            "locked": false,
+            "color": "none"
+        },
+        "design": {
+            "name": "Design",
+            "visible": true,
+            "locked": false,
+            "color": "none"
+        },
+        "clean": {
+            "name": "Clean",
+            "visible": true,
+            "locked": false,
+            "color": "none"
+        },
+        "pageNumber": {
+            "name": "Page Numbers",
+            "visible": true,
+            "locked": false,
+            "color": "none"
+        },
+        "text": {
+            "name": "Text",
+            "visible": true,
+            "locked": false,
+            "color": "none"
+        },
+        "sfx": {
+            "name": "SFX",
+            "visible": true,
+            "locked": false,
+            "color": "none"
+        }
+    },
+    
+    "styleImport": {
+        "enabled": true,
+        "styletemplatePath": "",
+        "importParagraphStyles": true,
+        "importCharacterStyles": true,
+        "importObjectStyles": true,
+        "importCompositeFonts": true,
+        "description": "填入样式模板文件indd路径"
+    },
+    
+    "imageImport": {
+        "enabled": true,
+        "artFolderPath": "",
+        "fileExtensions": [".tif", ".tiff", ".psd", ".jpg", ".jpeg", ".png"],
+        "placeByFileName": true,
+        "scaleFactor": 100,
+        "anchorPoint": "center",
+        "createMissingFrames": true,
+        "fitOptions": "fillProportionally",
+        "description": "填入图片文件路径"
+    },
+    
+    "textImport": {
+        "enabled": true,
+        "lpTxtPath": "",
+        "description": "填入LabelPlus文本文件txt路径",
+        "singleLineMode": true,
+        "multiLineMode": true,
+        "pageOffset": 0,
+        "matchByNumber": false,
+        "fromStartToEnd": true,
+        "textFrameSize": {
+            "width": 10,
+            "height": 25
+        },
+        "replacements": {
+            "！": "!",
+            "？": "?",
+            "——": "—",
+            "~": "～"
+        },
+        "styleRules": [
+            {
+                "match": "默认匹配",
+                "style": "文本框居中-垂直-自动缩框",
+                "enabled": true
+            },
+            {
+                "match": "*",
+                "style": "文本框居中-垂直-自动缩框",
+                "enabled": false
+            },
+            {
+                "match": "※",
+                "style": "文本框居中-垂直-自动缩框",
+                "enabled": false
+            },
+            {
+                "match": "＊",
+                "style": "文本框居中-垂直-自动缩框",
+                "enabled": false
+            }
+        ]
+    },
+
+    "fontMapping":{
+        "enabled": true,
+        "mapconfig": "",
+        "baseFontSize":9.2,
+        "description": "填入字体匹配配置ini的路径，如果是整个项目可不填，注意更改基准字号。"
+    },
+    
+    "segmentation": {
+        "enabled": true,
+        "range": "entireDocument",
+        "pythonScriptPath": "",
+        "waitForUser": true,
+        "description": "填入jieba断句脚本的位置，如果是整个项目可不填。断句范围默认全文档"
+    },
+    
+    "ghostFrameAlignment": {
+        "enabled": true,
+        "jsonPath": "",
+        "autoFindJson": true,
+        "jsonFileNamePattern": "imgtrans_[folderName].json",
+        "createGhostFrames": true,
+        "alignTextFrames": true,
+        "alignRange": "entireDocument",
+        "hideGhostLayerAfterAlign": true,
+        "ghostLayerName": "[輔助定位] 完整矩形框",
+        "ghostColorName": "GhostGreen",
+        "ghostStrokeWeight": 1.5,
+        "description": "辅助方框对齐功能。jsonPath可自定义JSON路径，若为空则自动在图片文件夹中查找imgtrans_[文件夹名].json"
+    },
+    
+    "output": {
+        "saveDocument": true,
+        "savePath": "",
+        "saveAsIdml": false,
+        "closeAfterSave": false,
+        "logPath": "",
+        "logEnabled": true
+    },
+    
+    "delays": {
+        "afterDocumentCreate": 500,
+        "afterLayerCreate": 300,
+        "afterStyleImport": 500,
+        "afterImagePlace": 200,
+        "afterTextImport": 500,
+        "afterStyleMatching": 500,
+        "afterSegmentation": 1000
+    },
+    
+    "errorHandling": {
+        "stopOnError": true,
+        "logErrors": true,
+        "showAlerts": false
+    }
+}
