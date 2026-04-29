@@ -108,6 +108,18 @@ function showMainInterface() {
                 applyStylesCheckbox.value = false;
             }
         };
+
+        // 对象样式下拉：允许用户选择要应用到所有导入文本框的对象样式
+        rightPanel.add("statictext", undefined, "对象样式:");
+        var objectStyles = [];
+        for (var si = 0; si < doc.objectStyles.length; si++) {
+            objectStyles.push(doc.objectStyles[si].name);
+        }
+        if (objectStyles.length === 0) {
+            objectStyles.push("[无]");
+        }
+        var objectStyleDropdown = rightPanel.add("dropdownlist", undefined, objectStyles);
+        objectStyleDropdown.selection = 0;
     
     // 基准字号设置
     rightPanel.add("statictext", undefined, "基准字号:");
@@ -172,6 +184,7 @@ function showMainInterface() {
             baseFontSize: baseFontSize,
             fitTextToFrame: fitTextToFrameCheckbox.value,
             includeFontInfo: includeFontInfoCheckbox.value
+            ,objectStyleName: (objectStyleDropdown.selection ? objectStyleDropdown.selection.text : "")
         };
         
         dialog.close(1);
@@ -381,6 +394,17 @@ function createTextFrameFromData(data, page, config, imageDim) {
         } catch (e) {
             // 忽略错误，继续处理其他文本框
             $.writeln("调整文本大小失败: " + e.message);
+        }
+    }
+    // 应用对象样式（如果在界面中选择了）
+    if (config && config.objectStyleName) {
+        try {
+            var objStyle = doc.objectStyles.itemByName(config.objectStyleName);
+            if (objStyle && objStyle.isValid) {
+                textFrame.appliedObjectStyle = objStyle;
+            }
+        } catch (e) {
+            // 忽略错误
         }
     }
 }
