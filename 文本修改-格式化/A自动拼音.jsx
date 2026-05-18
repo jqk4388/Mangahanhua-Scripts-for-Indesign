@@ -6,6 +6,20 @@
 #include "../Library/KTUlib.jsx"
 QUOTES_star = "\uFF08"; //  （）全形圆括号
 QUOTES_end = "\uFF09"; // 
+// 调试开关：运行时会弹出调试信息对话，调试完成后请改回 false
+var DEBUG_RUBY = true;
+// 控制台日志开关：将关键变量输出到 ExtendScript 控制台（$.writeln）
+var DEBUG_CONSOLE = true;
+
+function writeConsole(msg) {
+    try {
+        if (DEBUG_CONSOLE && typeof $ !== 'undefined' && $.writeln) {
+            $.writeln(msg);
+        }
+    } catch (e) {
+        // 忽略控制台写入错误
+    }
+}
 // 主函数
 KTUDoScriptAsUndoable(function() {main()}, "A自动拼音");
 
@@ -245,37 +259,22 @@ function findBrackets(text) {
 }
 
 function showRubyDialog(targetText, rubyText, prevLine, defaultChars, maxChars) {
-    var dialog = app.dialogs.add({name: "拼音设置"});
-    
+    // 始终使用 ScriptUI 对话框以增强在不同环境下的稳健性
     try {
-        var column = dialog.dialogColumns.add({alignChildren: 'left'});
-        
-        // 添加一个静态文本区域用于显示目标文本
-        var targetTextRow = column.dialogRows.add();
-        targetTextRow.staticTexts.add({staticLabel: "目标文本：" + targetText});
-        var rubyTextRow = column.dialogRows.add();
-        rubyTextRow.staticTexts.add({staticLabel: "拼音文本：" + rubyText});
-        var inputRow = column.dialogRows.add({alignChildren: 'left'});
-        inputRow.staticTexts.add({staticLabel: "注音字符数（0表示不注音）："});
-        var charField = inputRow.integerEditboxes.add({
-            editValue: defaultChars,
-            minWidth: 100
-        });
-        
-        if (dialog.show()) {
-            var value = charField.editValue;
-            if (value > maxChars) {
-                alert("输入的字符数超过了可加拼音的文字长度！");
-                return 0;
-            }
-            return value;
-        } else {
-            return null;
-        }
+        // 规范化输入，防止未定义/非数字导致对话框创建失败
+        defaultChars = (typeof defaultChars === 'number') ? defaultChars : Number(defaultChars) || 0;
+        maxChars = (typeof maxChars === 'number') ? maxChars : Number(maxChars) || 0;
+
+        try { writeConsole('LOG showRubyDialog 调用 ScriptUI - targetText:"' + String(targetText) + '" rubyText:"' + String(rubyText) + '" prevLine:"' + String(prevLine) + '" defaultChars:' + defaultChars + ' maxChars:' + maxChars); } catch(e){}
+
+        var result = fallbackRubyScriptUIDialog(targetText, rubyText, defaultChars, maxChars);
+        try { writeConsole('LOG showRubyDialog ScriptUI 返回: ' + String(result)); } catch(e){}
+        return result;
     } catch (e) {
-        alert("对话框错误：" + e);
-    } finally {
-        dialog.destroy();
+        try { writeConsole('ERROR showRubyDialog 异常: ' + e); } catch(e){}
+        // 出现任何异常则提示并返回 null
+        alert('对话框错误：' + e);
+        return null;
     }
 }
 
@@ -390,4 +389,49 @@ function findQuoteInfo(targetText, bracketStart, quoteTypes) {
     }
 
     return result;
+}
+
+// 后备 ScriptUI 对话框（在某些环境下比 app.dialogs 更可靠）
+function fallbackRubyScriptUIDialog(targetText, rubyText, defaultChars, maxChars) {
+    try {
+        writeConsole('LOG fallbackRubyScriptUIDialog 创建 ScriptUI 对话框');
+        var w = new Window('dialog', '拼音设置 (ScriptUI)');
+        w.orientation = 'column';
+        w.alignChildren = 'left';
+
+        var tGroup = w.add('group');
+        tGroup.add('statictext', undefined, '目标文本：');
+        tGroup.add('statictext', undefined, String(targetText));
+
+        var rGroup = w.add('group');
+        rGroup.add('statictext', undefined, '拼音文本：');
+        rGroup.add('statictext', undefined, String(rubyText));
+
+        var inputGroup = w.add('group');
+        inputGroup.add('statictext', undefined, '注音字符数（0表示不注音）：');
+        var charInput = inputGroup.add('edittext', undefined, String(defaultChars));
+        charInput.characters = 6;
+
+        var btnGroup = w.add('group');
+        btnGroup.alignment = 'right';
+        var okBtn = btnGroup.add('button', undefined, '确定');
+        var cancelBtn = btnGroup.add('button', undefined, '取消');
+
+        okBtn.onClick = function() { w.close(1); };
+        cancelBtn.onClick = function() { w.close(2); };
+
+        var res = w.show();
+        if (res === 1) {
+            var v = Number(charInput.text) || 0;
+            if (v > maxChars) {
+                alert('输入的字符数超过了可加拼音的文字长度！');
+                return 0;
+            }
+            return v;
+        }
+        return null;
+    } catch (e) {
+        writeConsole('ERROR fallbackRubyScriptUIDialog 异常: ' + e);
+        return null;
+    }
 }

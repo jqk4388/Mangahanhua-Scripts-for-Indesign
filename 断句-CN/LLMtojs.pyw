@@ -609,13 +609,13 @@ class App:
         # 保留原始的processed版本用于不同比较策略
         processed_clean = processed.replace('\\r','').strip()
 
-        # 如果原文包含空格，则允许 <BR> 替代空格
-        if ' ' in original:
-            # 将连续空白规范化为单个空格
-            orig_norm = re.sub(r"\\s+", ' ', original)
+        # 如果原文包含空格（包括半角空格和全角空格 U+3000），则允许 <BR> 替代空格
+        if ' ' in original or '\u3000' in original:
+            # 将连续空白（包括全角空格）规范化为单个半角空格
+            orig_norm = re.sub('[\\s\u3000]+', ' ', original)
             # 将 <BR> 视为空格，然后规范化
             proc_norm = processed_clean.replace('<BR>', ' ')
-            proc_norm = re.sub(r"\\s+", ' ', proc_norm)
+            proc_norm = re.sub('[\\s\u3000]+', ' ', proc_norm)
             if orig_norm == proc_norm:
                 return True, ""
 
