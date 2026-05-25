@@ -24,7 +24,7 @@ function moveTextToPreviousLine() {
     var selection = app.selection[0];
     
     // 检查是否有有效选择
-    if (!selection || !(selection instanceof Text || selection instanceof InsertionPoint || selection instanceof TextStyleRange|| selection instanceof Character)) {
+    if (!selection || !(selection instanceof Text || selection instanceof InsertionPoint || selection instanceof TextStyleRange|| selection instanceof Character|| selection instanceof Word)) {
         // alert("无效的选择！");
         return;
     }

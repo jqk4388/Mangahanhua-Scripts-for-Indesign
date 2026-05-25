@@ -36,9 +36,19 @@ function main() {
 
 function processText(text) {
     try {
-        var contents = QUOTES_star + text.contents + QUOTES_end;
-        text.contents = contents;
-        return;
+        // 如果是文本范围（可能包含换行），不要直接替换 contents，改为在选区前后插入括号
+        if (text && text.insertionPoints && text.insertionPoints.length > 0) {
+            var ips = text.insertionPoints;
+            // 先在结尾插入结束符，再在开头插入起始符，避免影响起始插入点索引
+            ips[ips.length - 1].contents = QUOTES_end;
+            ips[0].contents = QUOTES_star;
+            return;
+        } else {
+            // 备用方案：直接替换 contents（单字符或特殊情况）
+            var contents = QUOTES_star + text.contents + QUOTES_end;
+            text.contents = contents;
+            return;
+        }
     } catch (error) {
         alert("加括号发生错误：" + error.message);
     }
@@ -90,7 +100,8 @@ function processTextFrame(textFrame) {
 // 查找括号内容
 function findBrackets(text) {
     var results = [];
-    var regex = /(\(|（|\[|【|｛|{|<)(.*?)(\)|）|\]|】|｝|}|>)/g;
+        // 使用 [\s\S] 以匹配跨行内容（dot 不匹配换行）
+        var regex = /(\(|（|\[|【|｛|{|<)([\s\S]*?)(\)|）|\]|】|｝|}|>)/g;
     var match;
 
     while ((match = regex.exec(text)) !== null) {

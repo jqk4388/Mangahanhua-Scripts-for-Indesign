@@ -981,11 +981,39 @@ function importLabelPlusTextWithResult() {
         doc.activeLayer = textLayer;
         doc.viewPreferences.rulerOrigin = RulerOrigin.PAGE_ORIGIN;
         
+        // 在插入文本前，确保文档具有足够的页面
+        var maxPageNeeded = 0;
+        for (var ei = 0; ei < entries.length; ei++) {
+            var e = entries[ei];
+            // 优先使用 pageImage，其次使用 pageNumber，最后回退到 1
+            var pg = e.pageImage || e.pageNumber || 1;
+            // 如果 pageImage 为 0 或小于1，使用 pageNumber 或 1
+            if (!pg || pg < 1) {
+                pg = e.pageNumber || 1;
+            }
+            if (pg > maxPageNeeded) maxPageNeeded = pg;
+            // 也把修正后的值写回 entry，避免后续重复判断
+            e._resolvedPageImage = pg;
+        }
+
+        if (maxPageNeeded > doc.pages.length) {
+            var pagesToAdd = maxPageNeeded - doc.pages.length;
+            for (var ap = 0; ap < pagesToAdd; ap++) {
+                doc.pages.add();
+            }
+            logMessage("为文本导入添加页面: 新增 " + pagesToAdd + " 页 (总页数: " + doc.pages.length + ")");
+        }
+
         // 插入文本
         var insertedCount = 0;
         var failedCount = 0;
         
         for (var i = 0; i < entries.length; i++) {
+            // 优先使用解析好的 _resolvedPageImage
+            if (!entries[i]._resolvedPageImage) {
+                entries[i]._resolvedPageImage = entries[i].pageImage || entries[i].pageNumber || 1;
+                if (!entries[i]._resolvedPageImage || entries[i]._resolvedPageImage < 1) entries[i]._resolvedPageImage = 1;
+            }
             var insertResult = insertTextEntryWithResult(entries[i], textLayer);
             if (insertResult.success) {
                 insertedCount++;
