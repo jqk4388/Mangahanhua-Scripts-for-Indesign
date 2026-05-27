@@ -30,23 +30,43 @@ DEFAULT_APIS = {
     "Gemini": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent",
     "MiniMax": "https://api.minimaxi.com/v1/chat/completions",
     "OpenRouter": "https://openrouter.ai/api/v1/chat/completions"
+    ,"Anthropic": "https://api.anthropic.com/v1"
 }
+
+# 天翼云终端 (Wishub X6)
+DEFAULT_APIS["天翼云"] = "https://wishub-x6.ctyun.cn/v1"
 
 # 默认模型列表
 DEFAULT_MODELS = {
     "Ollama": ["deepseek-v4-flash", "deepseek-v4-pro"],
-    "OpenAI": ["gpt-4o", "gpt-5.2"],
-    "Doubao": ["doubao-seed-2-0-pro-260215"],
+    "OpenAI": ["gpt-4.1-2025-04-14", "gpt-5.4-nano-2026-03-17","gpt-5.5"],
+    "Doubao": ["doubao-seed-2-0-mini-260428", "doubao-seed-2-0-lite-260428","deepseek-v4-pro-260425", "deepseek-v4-flash-260425"],
     "DeepSeek": ["deepseek-v4-flash", "deepseek-v4-pro"],
-    "Qianwen": ["qwen-plus", "qwen-max"],
-    "Baidu": ["ernie-x1.1-preview"],
-    "Tencent": ["hunyuan-2.0-instruct-20251111"],
-    "Zhipu": ["glm-5"],
-    "Gemini": ["gemini-3-flash-preview"],
+    "Qianwen": ["qwen3.6-flash", "deepseek-v4-flash", "MiniMax/MiniMax-M2.7", "glm-5.1", "qwen3.7-max"],
+    "Baidu": ["ernie-5.0","deepseek-v4-flash","ernie-5.1"],
+    "Tencent": ["hy3-preview", "deepseek-v4-flash", "glm-5.1", "glm-5-turbo"],
+    "Zhipu": ["glm-5-turbo", "glm-4.7-flash", "glm-4.6v-flash"],
+    "Gemini": ["gemini-3.1-flash-lite", "gemini-3.5-flash"],
     "LM Studio": ["local-model"],
-    "MiniMax": ["MiniMax-M2.7"],
+    "MiniMax": ["MiniMax-M2.7", "MiniMax-M3"],
     "OpenRouter": ["openrouter/free"]
 }
+
+# Anthropic (Claude) 默认模型示例
+DEFAULT_MODELS["Anthropic"] = ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"]
+
+DEFAULT_MODELS["天翼云"] = []
+
+# 新增供应商: 移动云
+DEFAULT_APIS["移动云"] = "https://zhenze-huhehaote.cmecloud.cn/v1/chat/completions"
+# 可选 coding 套餐路径
+DEFAULT_APIS["移动云(Coding)"] = "https://zhenze-huhehaote.cmecloud.cn/api/coding/v1/chat/completions"
+DEFAULT_MODELS["移动云"] = ["deepseek-v4-flash"]
+
+# 新增供应商: 联通云 (unicom-cloud)
+DEFAULT_APIS["联通云"] = "https://aigw-gzgy2.cucloud.cn:8443/v1/chat/completions"
+# 联通云支持的模型
+DEFAULT_MODELS["联通云"] = ["DeepSeek-V4-Flash", "MiniMax-M2.5"]
 
 # 系统提示词
 DEFAULT_SYSTEM_PROMPT = (
@@ -270,19 +290,98 @@ class App:
                         # 有些返回直接是列表
                         models = [m.get("name") if isinstance(m, dict) else m for m in data]
                     return models
-            elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qianwen", "Tencent","Zhipu","Baidu", "LM Studio", "MiniMax", "OpenRouter"]:
+            elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qianwen", "Tencent", "Zhipu", "Baidu", "LM Studio", "MiniMax", "OpenRouter", "移动云", "移动云(Coding)", "联通云"]:
                 models_url = api_url.replace("/chat/completions", "/models")
                 headers = {"Authorization": f"Bearer {api_key}"}
                 resp = requests.get(models_url, headers=headers, timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
                     return [m["id"] for m in data.get("data", [])]
+            elif api_type == "天翼云":
+                # 天翼云 Wishub X6: 获取模型列表 API: /v1/models
+                try:
+                    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": "PostmanRuntime-ApipostRuntime/1.1.0"}
+                    # 构建 models URL，兼容用户填入 /v1 或不包含 /v1 的情况
+                    if "/v1" in api_url:
+                        base = api_url.split("/v1")[0] + "/v1"
+                    else:
+                        base = api_url.rstrip('/')
+                    models_url = base.rstrip('/') + "/models"
+                    resp = requests.get(models_url, headers=headers, timeout=5)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return [m.get("id") for m in data.get("data", [])]
+                except Exception as e:
+                    print(f"获取天翼云模型列表失败: {e}")
             elif api_type == "Gemini":
                 models_url = "https://generativelanguage.googleapis.com/v1beta/models"
                 resp = requests.get(models_url, params={"key": api_key}, timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
                     return [m["name"].split("/")[-1] for m in data.get("models", [])]
+            elif api_type == "Anthropic":
+                # Anthropic 列出模型: GET /v1/models
+                try:
+                    # 构建 models URL
+                    models_url = api_url.replace("/messages", "/models") if "/messages" in api_url else api_url.rstrip('/') + "/models"
+
+                    # 允许通过高级设置（extra_params）传入 anthropic-version、betas、limit、afterID、beforeID
+                    extra = {}
+                    try:
+                        extra = json.loads(self.extra_params_var.get().strip() or "{}")
+                    except Exception:
+                        extra = {}
+
+                    headers = {"x-api-key": api_key}
+                    if extra.get("anthropic-version"):
+                        headers["anthropic-version"] = extra.get("anthropic-version")
+                    else:
+                        headers["anthropic-version"] = "2023-06-01"
+
+                    # betas 可以作为列表，通过头部传递
+                    if extra.get("betas") and isinstance(extra.get("betas"), (list, tuple)):
+                        headers["Anthropic-Beta"] = ",".join(map(str, extra.get("betas")))
+
+                    params = {}
+                    if extra.get("limit"):
+                        params["limit"] = int(extra.get("limit"))
+                    if extra.get("afterID"):
+                        params["afterID"] = extra.get("afterID")
+                    if extra.get("beforeID"):
+                        params["beforeID"] = extra.get("beforeID")
+
+                    resp = requests.get(models_url, headers=headers, timeout=5, params=params or None)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        # 兼容不同字段名和结构
+                        models = []
+                        candidates = []
+                        if isinstance(data, dict):
+                            # 常见结构: {"data": [...]} 或 {"models": [...]} 或 {"models": {"data": [...]}}
+                            if data.get("data") and isinstance(data.get("data"), list):
+                                candidates = data.get("data")
+                            elif data.get("models") and isinstance(data.get("models"), list):
+                                candidates = data.get("models")
+                            elif data.get("models") and isinstance(data.get("models"), dict) and data.get("models").get("data"):
+                                candidates = data.get("models").get("data")
+                            else:
+                                # 可能是键为 id->obj 的映射，或单个对象
+                                for k, v in data.items():
+                                    if isinstance(v, dict) and (v.get("id") or v.get("model") or v.get("name")):
+                                        candidates.append(v)
+                        elif isinstance(data, list):
+                            candidates = data
+
+                        for m in candidates:
+                            if isinstance(m, dict):
+                                mid = m.get("id") or m.get("model") or m.get("name") or m.get("displayName") or m.get("display_name")
+                                if mid:
+                                    models.append(mid)
+                            else:
+                                models.append(m)
+                        return models
+                except Exception as e:
+                    print(f"获取Anthropic模型列表失败: {e}")
         except Exception as e:
             print(f"获取模型列表失败: {e}")
         return []
@@ -528,7 +627,43 @@ class App:
                             response = response
                 tokens = data.get("eval_count", data.get("usage", {}).get("total_tokens", 0) if isinstance(data, dict) else 0)
                 return response or "", tokens
-            elif api_type in ["OpenAI", "Doubao", "Qianwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter"]:
+            elif api_type == "Anthropic":
+                # Anthropic / Claude compatible API: POST /v1/messages
+                headers = {"x-api-key": api_key, "Content-Type": "application/json"}
+                # 支持通过额外参数覆盖 anthropic-version
+                anthro_version = extra_params.get("anthropic-version") if isinstance(extra_params, dict) else None
+                if anthro_version:
+                    headers["anthropic-version"] = anthro_version
+                else:
+                    headers["anthropic-version"] = "2023-06-01"
+                endpoint = api_url if api_url.rstrip('/').endswith('/messages') or api_url.rstrip('/').endswith('/messages/') else api_url.rstrip('/') + "/messages"
+                payload = {
+                    "model": model,
+                    "max_tokens": extra_params.get("max_tokens", 1024) if isinstance(extra_params, dict) else 1024,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+                # 合并额外参数（不覆盖 headers）
+                for k, v in (extra_params.items() if isinstance(extra_params, dict) else []):
+                    if k not in payload:
+                        payload[k] = v
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=120)
+                resp.raise_for_status()
+                data = resp.json()
+                response = ""
+                # 兼容不同返回格式
+                if isinstance(data, dict):
+                    # 新版可能返回 {"completion": "..."} 或 choices 结构
+                    response = data.get("completion") or data.get("response") or data.get("text") or ""
+                    if not response and data.get("choices"):
+                        try:
+                            response = data["choices"][0]["message"]["content"]
+                        except Exception:
+                            pass
+                elif isinstance(data, str):
+                    response = data
+                tokens = data.get("usage", {}).get("total_tokens", 0) if isinstance(data, dict) else 0
+                return response, tokens
+            elif api_type in ["OpenAI", "Doubao", "Qianwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter", "移动云", "移动云(Coding)", "联通云"]:
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
                     "model": model,
@@ -543,6 +678,31 @@ class App:
                 data = resp.json()
                 response = data["choices"][0]["message"]["content"]
                 tokens = data.get("usage", {}).get("total_tokens", 0)
+                return response, tokens
+            elif api_type == "天翼云":
+                # 天翼云 Wishub X6 接口兼容类似 OpenAI 的 /v1/chat/completions
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": "PostmanRuntime-ApipostRuntime/1.1.0"}
+                # 如果用户填的是 v1 根路径，则追加 chat/completions
+                endpoint = api_url if api_url.endswith("/chat/completions") else api_url.rstrip('/') + "/chat/completions"
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False
+                }
+                payload.update(extra_params)
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=120)
+                resp.raise_for_status()
+                data = resp.json()
+                # 兼容不同返回格式
+                response = ""
+                if isinstance(data, dict):
+                    try:
+                        response = data["choices"][0]["message"]["content"]
+                    except Exception:
+                        response = data.get("response") or data.get("text") or ""
+                elif isinstance(data, str):
+                    response = data
+                tokens = data.get("usage", {}).get("total_tokens", 0) if isinstance(data, dict) else 0
                 return response, tokens
             elif api_type == "Baidu":
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
