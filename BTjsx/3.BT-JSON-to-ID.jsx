@@ -6,7 +6,7 @@
 
 // 声明全局变量
 #include "../Library/KTUlib.jsx"
-var version = "1.0";
+var version = "1.1";
 var doc = app.activeDocument;
 var selectedImages = []; // 保存选中的图片
 var jsonData = {}; // 保存解析后的JSON数据
@@ -19,6 +19,7 @@ var imageDimensions = {}; // 保存图片尺寸信息 {imageName: {width: w, hei
 function showMainInterface() {
     var dialog = new Window("dialog", "JSON文本导入工具 " + version);
     dialog.preferredSize = [700, 450];
+    var resultData = null;
     
     // 顶部：文件选择部分
     var topGroup = dialog.add("group");
@@ -183,32 +184,16 @@ function showMainInterface() {
             placeImages: placeImagesCheckbox.value,
             baseFontSize: baseFontSize,
             fitTextToFrame: fitTextToFrameCheckbox.value,
-            includeFontInfo: includeFontInfoCheckbox.value
-            ,objectStyleName: (objectStyleDropdown.selection ? objectStyleDropdown.selection.text : "")
+            includeFontInfo: includeFontInfoCheckbox.value,
+            objectStyleName: (objectStyleDropdown.selection ? objectStyleDropdown.selection.text : "")
+        };
+        
+        resultData = {
+            selectedImages: selectedImages,
+            config: config
         };
         
         dialog.close(1);
-        
-        // 执行导入操作
-        try {
-            // 设置标尺原点和单位
-            doc.viewPreferences.rulerOrigin = RulerOrigin.pageOrigin;
-            doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.millimeters;
-            doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.millimeters;
-            doc.zeroPoint = [0, 0];
-            try {
-                var textLayer = doc.layers.itemByName("Text");
-                if (textLayer.isValid) {
-                    doc.activeLayer = textLayer;
-                    textLayer.locked = false;
-                    textLayer.visible = true;
-            }
-            } catch (e) {}
-            KTUDoScriptAsUndoable(function() {processSelectedImages(selectedImages, config)}, "BT-JSON导入");
-            alert("导入完成！");
-        } catch (e) {
-            alert("导入失败: " + e.message);
-        }
     };
     
     // 填充图片列表函数
@@ -228,7 +213,8 @@ function showMainInterface() {
     
     // 显示对话框
     dialog.center();
-    var result = dialog.show();
+    dialog.show();
+    return resultData;
 }
 
 // 读取并解析JSON文件
@@ -1010,7 +996,28 @@ var TextFitter = {
 
 // 主函数调用
 if (app.documents.length > 0) {
-    showMainInterface();
+    var userInput = showMainInterface();
+    if (userInput) {
+        try {
+            // 设置标尺原点和单位
+            doc.viewPreferences.rulerOrigin = RulerOrigin.pageOrigin;
+            doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.millimeters;
+            doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.millimeters;
+            doc.zeroPoint = [0, 0];
+            try {
+                var textLayer = doc.layers.itemByName("Text");
+                if (textLayer.isValid) {
+                    doc.activeLayer = textLayer;
+                    textLayer.locked = false;
+                    textLayer.visible = true;
+                }
+            } catch (e) {}
+            KTUDoScriptAsUndoable(function() {processSelectedImages(userInput.selectedImages, userInput.config)}, "BT-JSON导入");
+            alert("导入完成！");
+        } catch (e) {
+            alert("导入失败: " + e.message);
+        }
+    }
 } else {
     alert("请先打开一个InDesign文档。");
 }
