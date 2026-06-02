@@ -52,7 +52,7 @@ metadata:
      - 使用用户指定的配置文件`python config_editor.py -c C:/path/to/my_config.json run`。
 4. **测试验证**：运行后验证效果，若有错误，分析日志并修复。提供测试步骤。
 5. **交付**：*第一类*：提供脚本文件、配置文件和使用说明。包括故障排除指南。
-   - *第二类：漫画排版*：查看分析脚本运行记录日志`manga_layout_vbs.log` `manga_layout_sh.log` `manga_layout.log`，确保正确执行。
+   - *第二类：漫画排版*：查看分析脚本运行记录日志`src/manga_layout_vbs.log` `src/manga_layout_sh.log` `src/manga_layout.log`，确保正确执行。
 
 ## 第一类：用户需求生成脚本执行
 - 根据用户描述的格式修改需求，生成`scriptRun.jsx`脚本。
@@ -113,4 +113,8 @@ metadata:
 - Q: 如何人工确认配置？
   - A: `python config_editor.py -c my_config.json`文件，打开界面窗口人工修改配置。
 - Q: vbs脚本不能运行？
-  - A: 必须使用全英文，注释也必须使用英文。检查文件路径是否正确，确保VBS脚本有执行权限。查看日志文件`manga_layout_vbs.log`获取错误信息。
+  - A: 必须使用全英文，注释也必须使用英文。检查文件路径是否正确，确保VBS脚本有执行权限。查看日志文件`src/manga_layout_vbs.log`获取错误信息。
+- Q: 步骤9字体匹配报错？
+  - A: 提前准备字体映射配置文件，确认`fontMapping.mapconfig`配置正确，字体已安装。检查字体映射文件路径是否正确，确保配置文件中的字体名称与系统中安装的字体名称一致。
+- Q: set 命令的输出在 Windows 控制台中中文路径全部变成了问号？
+  - A: Windows控制台默认编码为GBK，无法正确显示UTF-8编码的中文路径。输出乱码不影响，用 save 命令或直接查看 JSON 文件确认配置。

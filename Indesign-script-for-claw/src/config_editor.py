@@ -309,7 +309,7 @@ def cli_set(args):
     value = parse_value(args.value, args.key, config)
     set_nested_value(config, args.key, value)
     save_config_file(config_path, config)
-    print(f"已设置 {args.key} = {json.dumps(value, ensure_ascii=False)}", flush=True)
+    print(f"已设置 {args.key} = {json.dumps(value, ensure_ascii=False)}，配置已自动保存到: {config_path}", flush=True)
 
 
 def cli_list(args):
