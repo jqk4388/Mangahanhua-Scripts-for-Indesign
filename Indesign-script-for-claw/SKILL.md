@@ -1,9 +1,18 @@
 ---
 name: Indesign-script-for-claw
-description: 【SKILL】基于用户排版需求，自动生成适用于Adobe InDesign的脚本代码，实现批量化、风格化的排版。对漫画嵌字排版有超高适配能力，能够根据用户需求修改配置文件并调用相应脚本实现自动排版。支持Windows和Mac平台，兼容多种InDesign版本。
-version: 1.1.1
+description: 基于用户排版需求，自动生成适用于Adobe InDesign的脚本代码，实现批量化、风格化的排版。对漫画嵌字排版有超高适配能力，能够根据用户需求修改配置文件并调用相应脚本实现自动排版。支持Windows和Mac平台，兼容多种InDesign版本。
+version: 1.1.2
 author: 几千块
 tags: [InDesign, automation, scripting, layout, design, manga, typesetting, ExtendScript, JavaScript, Adobe]
+emoji: "🎨"
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - python
+        - cscript
+      homepage: "https://github.com/jqk4388/Mangahanhua-Scripts-for-Indesign/tree/master/Indesign-script-for-claw"
+      os: ["Windows", "macos"]
 ---
 
 # 角色定义 (Role)
@@ -12,20 +21,38 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting, Exte
 # 任务目标 (Objective)
 接收用户的排版需求和设计风格描述后，分析需求、理解设计意图，生成适用于InDesign的脚本代码。代码应实现用户描述的排版效果，在InDesign中正确执行，达到预期设计结果。对于漫画排版，优先使用现有自动化脚本，通过修改配置文件实现快速部署。确保代码高效、可维护，并提供详细的使用说明。
 
+
+```
+│  SKILL.md
+│
+└─src
+        config_editor.pyw # 用于修改漫画排版配置文件的脚本
+        jieba_pytojs.pyw # 漫画排版用的断句脚本，需要安装jieba库
+        manga_layout.jsxbin # 漫画自动排版脚本，编译后的二进制文件
+        manga_layout_config - template.json # 漫画排版配置文件模板，用户可复制修改
+        run.sh # macOS上执行InDesign脚本的shell脚本，支持传入脚本路径参数
+        run.vbs # Windows上执行InDesign脚本的VBScript脚本，支持传入脚本路径参数
+        scriptRun.jsx # 根据用户需求生成的InDesign脚本，示例文件
+```
 # 执行流程 (Workflow)
 1. **环境检查**：检查InDesign是否正在运行。若未运行，提示用户启动InDesign或使用命令行启动。
-2. **需求分析**：解析用户需求，确定是通用排版脚本生成还是漫画自动化排版。若需求不明确，主动询问用户澄清。
+2. **需求分析**：解析用户需求，确定是通用排版脚本生成还是漫画自动化排版。若需求不明确，主动询问用户澄清。漫画排版的情况需要明确图片文件夹、翻译稿路径、模板文件路径等关键信息，也可以从用户指定的压缩包等文件中获取，缺少时停下来提醒用户补充。
 3. **脚本生成/配置修改**：
-   - **第一类：通用脚本生成**：
-     - 生成`scriptRun.jsx`文件。
+   - *第一类：通用脚本生成*：
+     - 生成`scriptRun.jsx`文件（可保存在任意目录）。
      - 遵循代码规范和兼容性要求。
-     - 使用`cd src && cscript run.vbs`调用其执行。
-   - **第二类：漫画排版**：
+     - 使用 `run.vbs` 调用执行，支持以下三种方式：
+       - 默认（脚本放在 src 目录）：`cd src && cscript run.vbs`
+       - 绝对路径：`cscript run.vbs "C:\path\to\script.jsx"`
+       - 相对路径（相对当前目录）：`cscript run.vbs "script.jsx"`
+       **注意：在 macOS 上可能需要先执行 `chmod +x run.sh`。再执行`run.sh myscript.jsx`**
+   - *第二类：漫画排版*：
      - 执行`python config_editor.pyw set`修改配置文件，设置路径和参数。
      - 执行`python config_editor.pyw run`调用漫画自动化脚本。
      - 使用用户指定的配置文件`python config_editor.pyw -c C:/path/to/my_config.json run`。
 4. **测试验证**：运行后验证效果，若有错误，分析日志并修复。提供测试步骤。
-5. **交付**：提供脚本文件、配置文件和使用说明。包括故障排除指南。
+5. **交付**：*第一类*：提供脚本文件、配置文件和使用说明。包括故障排除指南。
+   - *第二类：漫画排版*：查看分析脚本运行记录日志`manga_layout_vbs.log` `manga_layout_sh.log` `manga_layout.log`，确保正确执行。
 
 ## 第一类：用户需求生成脚本执行
 - 根据用户描述的格式修改需求，生成`scriptRun.jsx`脚本。
@@ -47,7 +74,7 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting, Exte
 - 收到漫画排版需求后，寻找图片文件夹、翻译稿，模板文件，配置文件的路径，并向用户确认，然后使用config_editor.pyw来修改配置文件。
 - 默认使用`manga_layout_config - template.json`中的设置。
 - 执行`python config_editor.pyw -h`来查看帮助信息。
-- 使用set来设置路径，如`python config_editor.pyw set imageImport.artFolderPath M:\汉化\`。
+- 使用set来设置路径，如`python config_editor.pyw set imageImport.artFolderPath D:\汉化`。
 - 使用save来保存配置，如`python config_editor.pyw save`。
 
 
@@ -63,9 +90,14 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting, Exte
 
 # 示例 (Examples)
 - 用户需求："将所有文本框的字体改为Arial，大小12pt。"
-  - 生成`scriptRun.jsx`，遍历文档文本框，应用样式。执行`cd src && cscript run.vbs`。
+  - 生成`scriptRun.jsx`，新建字号大小为12的段落样式，遍历文档文本框应用样式。
+  - 执行方式示例：
+    - `cd src && cscript run.vbs`（脚本在 src 目录）
+    - `cscript run.vbs "C:\my\script.jsx"`（绝对路径）
+    - `cscript run.vbs "relative\script.jsx"`（相对当前目录）
 - 漫画排版："处理网络漫画，图片在folder1，稿件在file.txt，对应漫画模板在template.indt，样式模板在style.indd。"
-  - 执行`python config_editor.pyw set imageImport.artFolderPath folder1` `python config_editor.pyw set textImport.lpTxtPath file.txt` `python config_editor.pyw set templateDocument.indtPath template.indt` `python config_editor.pyw set styleImport.styletemplatePath style.indd` ，设置路径，执行脚本`python config_editor.pyw run`。
+  - 分别执行`python config_editor.pyw set imageImport.artFolderPath folder1` `python config_editor.pyw set textImport.lpTxtPath file.txt` `python config_editor.pyw set templateDocument.indtPath template.indt` `python config_editor.pyw set styleImport.styletemplatePath style.indd` ，设置路径
+  - 执行ID嵌字脚本`python config_editor.pyw run`
 - 用户需求："为所有图像添加边框。"
   - 生成脚本，遍历图像对象，应用边框样式。
 - 漫画排版："调整基础字体大小为10pt，用于商业漫画。"
@@ -73,10 +105,12 @@ tags: [InDesign, automation, scripting, layout, design, manga, typesetting, Exte
 
 # 常见问题 (FAQ)
 - Q: 脚本不执行？
-  - A: 检查InDesign是否运行，路径是否纯英文，日志文件是否有错误。确保VBS脚本有执行权限。
+  - A: 检查InDesign是否运行，路径是否纯英文，日志文件是否有错误。确保VBS/SH脚本有执行权限。
 - Q: 字体不匹配？
   - A: 确认`fontMapping.mapconfig`配置正确，字体已安装。检查字体映射文件路径。
 - Q: 断句脚本不能运行？
  - A: 确认脚本路径正确，`pip install jieba`。确保Python环境配置正确。
 - Q: 如何人工确认配置？
   - A: `python config_editor.pyw -c my_config.json`文件，打开界面窗口人工修改配置。
+- Q: vbs脚本不能运行？
+  - A: 必须使用全英文，注释也必须使用英文。检查文件路径是否正确，确保VBS脚本有执行权限。查看日志文件`manga_layout_vbs.log`获取错误信息。

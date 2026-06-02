@@ -246,11 +246,25 @@ def save_config_file(config_path, config):
 
 def find_default_config():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    for name in ["manga_layout_config - template.json", "manga_layout_config.json"]:
+    for name in ["manga_layout_config.json", "manga_layout_config - template.json"]:
         path = os.path.join(script_dir, name)
         if os.path.exists(path):
             return path
     return None
+
+
+def find_template_config():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(script_dir, "manga_layout_config - template.json")
+    return path if os.path.exists(path) else None
+
+
+def create_config_from_template(config_path):
+    template_path = find_template_config()
+    if not template_path:
+        raise FileNotFoundError("模板配置文件未找到: manga_layout_config - template.json")
+    os.makedirs(os.path.dirname(os.path.abspath(config_path)), exist_ok=True)
+    shutil.copyfile(template_path, config_path)
 
 
 def cli_get(args):
@@ -271,9 +285,18 @@ def cli_get(args):
 
 def cli_set(args):
     config_path = args.config or find_default_config()
-    if not config_path or not os.path.exists(config_path):
+    if not config_path:
         print(f"错误: 配置文件未找到", file=sys.stderr)
         sys.exit(1)
+
+    if not os.path.exists(config_path):
+        try:
+            create_config_from_template(config_path)
+            print(f"配置文件不存在，已从模板生成: {config_path}")
+        except Exception as e:
+            print(f"错误: 无法生成配置文件: {e}", file=sys.stderr)
+            sys.exit(1)
+
     config = load_config_file(config_path)
     value = parse_value(args.value, args.key, config)
     set_nested_value(config, args.key, value)
@@ -336,6 +359,31 @@ def cli_schema(args):
     print_schema(CONFIG_SCHEMA)
 
 
+def find_run_script(config_path):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_dir = os.path.dirname(os.path.abspath(config_path))
+    if os.name == "posix":
+        candidates = [
+            os.path.join(config_dir, "run_manga_layout.sh"),
+            os.path.join(script_dir, "run_manga_layout.sh"),
+        ]
+    else:
+        candidates = [
+            os.path.join(config_dir, "run_manga_layout.vbs"),
+            os.path.join(script_dir, "run_manga_layout.vbs"),
+        ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def get_run_command(script_path):
+    if script_path.endswith(".sh"):
+        return ["/bin/bash", script_path]
+    return ["cscript", script_path]
+
+
 def cli_run(args):
     # Determine the config provided (via --config) or default
     config_path = args.config or find_default_config()
@@ -343,34 +391,30 @@ def cli_run(args):
         print("错误: 配置文件未找到", file=sys.stderr)
         sys.exit(1)
 
-    # Locate run_manga_layout.vbs. Prefer the same directory as the config;
-    # fall back to the script directory if not found there.
-    vbs_path = os.path.join(os.path.dirname(config_path), "run_manga_layout.vbs")
-    if not os.path.exists(vbs_path):
-        alt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_manga_layout.vbs")
-        if os.path.exists(alt):
-            vbs_path = alt
-        else:
-            print(f"错误: 脚本文件未找到: {vbs_path}", file=sys.stderr)
-            sys.exit(1)
+    script_path = find_run_script(config_path)
+    if not script_path:
+        script_name = "run_manga_layout.sh" if os.name == "posix" else "run_manga_layout.vbs"
+        print(f"错误: 脚本文件未找到: {script_name}", file=sys.stderr)
+        sys.exit(1)
 
-    vbs_dir = os.path.dirname(vbs_path)
-
-    # Copy the user-provided config to the VBS directory as manga_layout_config.json
-    target_config = os.path.join(vbs_dir, "manga_layout_config.json")
+    script_dir = os.path.dirname(script_path)
+    target_config = os.path.join(script_dir, "manga_layout_config.json")
     try:
-        # If the provided config is already the target, this is a no-op copy
-        shutil.copyfile(config_path, target_config)
+        abs_source = os.path.abspath(config_path)
+        abs_target = os.path.abspath(target_config)
+        if abs_source != abs_target:
+            shutil.copyfile(config_path, target_config)
     except Exception as e:
         print(f"错误: 复制配置文件到运行目录失败: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Launch the VBS script in a new console
     try:
-        subprocess.Popen(["cscript", vbs_path],
-                         cwd=vbs_dir,
-                         creationflags=subprocess.CREATE_NEW_CONSOLE)
-        print(f"已启动脚本: {vbs_path} (使用配置: {target_config})")
+        cmd = get_run_command(script_path)
+        popen_kwargs = {"cwd": script_dir}
+        if os.name != "posix":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+        subprocess.Popen(cmd, **popen_kwargs)
+        print(f"已启动脚本: {script_path} (使用配置: {target_config})")
     except Exception as e:
         print(f"错误: 启动脚本失败: {e}", file=sys.stderr)
         sys.exit(1)
@@ -398,7 +442,7 @@ def build_parser():
             "  %(prog)s save                                      # 保存配置\n"
             "  %(prog)s save --output new_config.json            # 另存为\n"
             "  %(prog)s schema                                    # 查看配置schema说明\n"
-            "  %(prog)s run                                       # 执行manga_layout脚本\n"
+            "  %(prog)s run                                       # 执行manga_layout脚本 (.vbs on Windows, .sh on macOS)\n"
         )
     )
     parser.add_argument(
@@ -475,8 +519,8 @@ def build_parser():
 
     subparsers.add_parser(
         "run",
-        help="执行 manga_layout.vbs 脚本",
-        description="执行配置文件同目录下的 run_manga_layout.vbs 脚本。"
+        help="执行 manga_layout 脚本",
+        description="执行配置文件同目录下的 run_manga_layout.vbs (Windows) 或 run_manga_layout.sh (macOS) 脚本。"
     )
 
     return parser
@@ -680,14 +724,16 @@ class ConfigEditor:
             self.reload_config()
 
     def run_manga_layout(self):
-        vbs_path = os.path.join(os.path.dirname(self.config_path), "run_manga_layout.vbs")
-        if not os.path.exists(vbs_path):
-            messagebox.showerror("错误", f"脚本文件未找到: {vbs_path}")
+        script_path = find_run_script(self.config_path)
+        if not script_path:
+            messagebox.showerror("错误", "脚本文件未找到: run_manga_layout.vbs 或 run_manga_layout.sh")
             return
         try:
-            subprocess.Popen(["cscript", vbs_path],
-                             cwd=os.path.dirname(vbs_path),
-                             creationflags=subprocess.CREATE_NEW_CONSOLE)
+            cmd = get_run_command(script_path)
+            popen_kwargs = {"cwd": os.path.dirname(script_path)}
+            if os.name != "posix":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+            subprocess.Popen(cmd, **popen_kwargs)
         except Exception as e:
             messagebox.showerror("错误", f"启动脚本失败: {e}")
 

@@ -12,7 +12,7 @@
  * 7. 执行断句
  * 
  * 作者：几千块
- * 版本：1.1.0
+ * 版本：1.1.1
  */
 
 // ==================== 依赖引入 ====================
@@ -20,12 +20,30 @@
 #include "json2.js"
 
 // ==================== 全局变量 ====================
-var SCRIPT_VERSION = "1.1.0";
+var SCRIPT_VERSION = "1.1.1";
 var SCRIPT_NAME = "漫画全自动嵌字";
 var config = null;
 var doc = null;
 var logMessages = [];
 var errorMessages = [];
+// 日志文件路径（固定为脚本所在目录下的 manga_layout.log）
+var SCRIPT_FOLDER = File($.fileName).parent.fsName;
+var LOG_FILE_NAME = "manga_layout.log";
+var LOG_FILE_PATH = SCRIPT_FOLDER + (($.os.indexOf("Windows") !== -1) ? "\\" : "/") + LOG_FILE_NAME;
+
+// 将日志条目立即追加到文件（不在控制台输出）
+function appendToLogFileSync(entry) {
+    try {
+        var lf = new File(LOG_FILE_PATH);
+        lf.encoding = "UTF-8";
+        // 如果文件不存在，open("a") 会创建该文件
+        lf.open("a");
+        lf.writeln(entry);
+        lf.close();
+    } catch (e) {
+        // 忽略日志写入错误，避免打断主流程
+    }
+}
 
 // ==================== 主入口函数 ====================
 app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;// 设置无界面模式
@@ -2534,38 +2552,30 @@ function logMessage(message) {
     var logEntry = "[" + timestamp + "] " + message;
     logMessages.push(logEntry);
     $.writeln(logEntry);
+    appendToLogFileSync(logEntry);
 }
 
 // 写入日志文件
 function writeLogFile() {
     try {
-        var logPath = config.output.logPath;
-        if (!logPath) {
-            var desktopPath = Folder.desktop.fsName;
-            var timestamp = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19);
-            logPath = desktopPath + "\\manga_layout_log_" + timestamp + ".txt";
-            if ($.os.indexOf("Windows") === -1) {
-                logPath = desktopPath + "/manga_layout_log_" + timestamp + ".txt";
-            }
-        }
-        
-        var logFile = new File(logPath);
+        // 使用脚本目录下的固定日志文件
+        var logFile = new File(LOG_FILE_PATH);
         logFile.encoding = "UTF-8";
         logFile.open("w");
-        
-        // 写入所有日志消息
+
+        // 写入所有日志消息（覆盖旧文件）
         logFile.write(logMessages.join("\n"));
-        
+
         // 如果有错误，额外写入错误信息
         if (errorMessages.length > 0) {
             logFile.write("\n\n===== 错误信息 =====\n");
             logFile.write(errorMessages.join("\n"));
         }
-        
+
         logFile.close();
-        
     } catch (e) {
-        $.writeln("写入日志文件失败: " + e.message);
+        // 如果写入失败，尝试追加到日志文件（以兼容权限问题）
+        try { appendToLogFileSync("写入日志文件失败: " + e.message); } catch (ee) {}
     }
 }
 
