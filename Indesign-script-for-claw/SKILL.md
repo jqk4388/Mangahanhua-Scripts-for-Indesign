@@ -1,7 +1,7 @@
 ---
 name: Indesign-script-for-claw
 description: 基于用户排版需求，自动生成适用于Adobe InDesign的脚本代码，实现批量化、风格化的排版。对漫画嵌字排版有超高适配能力，能够根据用户需求修改配置文件并调用相应脚本实现自动排版。支持Windows和Mac平台，兼容多种InDesign版本。
-version: 1.1.2
+version: 1.1.3
 author: 几千块
 tags: [InDesign, automation, scripting, layout, design, manga, typesetting, ExtendScript, JavaScript, Adobe]
 emoji: "🎨"
@@ -26,8 +26,8 @@ metadata:
 │  SKILL.md
 │
 └─src
-        config_editor.pyw # 用于修改漫画排版配置文件的脚本
-        jieba_pytojs.pyw # 漫画排版用的断句脚本，需要安装jieba库
+        config_editor.py # 用于修改漫画排版配置文件的脚本
+        jieba_pytojs.py # 漫画排版用的断句脚本，需要安装jieba库
         manga_layout.jsxbin # 漫画自动排版脚本，编译后的二进制文件
         manga_layout_config - template.json # 漫画排版配置文件模板，用户可复制修改
         run.sh # macOS上执行InDesign脚本的shell脚本，支持传入脚本路径参数
@@ -47,9 +47,9 @@ metadata:
        - 相对路径（相对当前目录）：`cscript run.vbs "script.jsx"`
        **注意：在 macOS 上可能需要先执行 `chmod +x run.sh`。再执行`run.sh myscript.jsx`**
    - *第二类：漫画排版*：
-     - 执行`python config_editor.pyw set`修改配置文件，设置路径和参数。
-     - 执行`python config_editor.pyw run`调用漫画自动化脚本。
-     - 使用用户指定的配置文件`python config_editor.pyw -c C:/path/to/my_config.json run`。
+     - 执行`python config_editor.py set`修改配置文件，设置路径和参数。
+     - 执行`python config_editor.py run`调用漫画自动化脚本。
+     - 使用用户指定的配置文件`python config_editor.py -c C:/path/to/my_config.json run`。
 4. **测试验证**：运行后验证效果，若有错误，分析日志并修复。提供测试步骤。
 5. **交付**：*第一类*：提供脚本文件、配置文件和使用说明。包括故障排除指南。
    - *第二类：漫画排版*：查看分析脚本运行记录日志`manga_layout_vbs.log` `manga_layout_sh.log` `manga_layout.log`，确保正确执行。
@@ -71,11 +71,11 @@ metadata:
 - 错误处理：使用try-catch捕获错误，确保脚本稳定运行。
 
 ## 第二类：漫画自动排版脚本调用
-- 收到漫画排版需求后，寻找图片文件夹、翻译稿，模板文件，配置文件的路径，并向用户确认，然后使用config_editor.pyw来修改配置文件。
+- 收到漫画排版需求后，寻找图片文件夹、翻译稿，模板文件，配置文件的路径，并向用户确认，然后使用config_editor.py来修改配置文件。
 - 默认使用`manga_layout_config - template.json`中的设置。
-- 执行`python config_editor.pyw -h`来查看帮助信息。
-- 使用set来设置路径，如`python config_editor.pyw set imageImport.artFolderPath D:\汉化`。
-- 使用save来保存配置，如`python config_editor.pyw save`。
+- 执行`python config_editor.py -h`来查看帮助信息。
+- 使用set来设置路径，如`python config_editor.py set imageImport.artFolderPath D:\汉化`。
+- 使用save来保存配置，如`python config_editor.py save`。
 
 
 # 约束条件 (Constraints)
@@ -96,12 +96,12 @@ metadata:
     - `cscript run.vbs "C:\my\script.jsx"`（绝对路径）
     - `cscript run.vbs "relative\script.jsx"`（相对当前目录）
 - 漫画排版："处理网络漫画，图片在folder1，稿件在file.txt，对应漫画模板在template.indt，样式模板在style.indd。"
-  - 分别执行`python config_editor.pyw set imageImport.artFolderPath folder1` `python config_editor.pyw set textImport.lpTxtPath file.txt` `python config_editor.pyw set templateDocument.indtPath template.indt` `python config_editor.pyw set styleImport.styletemplatePath style.indd` ，设置路径
-  - 执行ID嵌字脚本`python config_editor.pyw run`
+  - 分别执行`python config_editor.py set imageImport.artFolderPath folder1` `python config_editor.py set textImport.lpTxtPath file.txt` `python config_editor.py set templateDocument.indtPath template.indt` `python config_editor.py set styleImport.styletemplatePath style.indd` ，设置路径
+  - 执行ID嵌字脚本`python config_editor.py run`
 - 用户需求："为所有图像添加边框。"
   - 生成脚本，遍历图像对象，应用边框样式。
 - 漫画排版："调整基础字体大小为10pt，用于商业漫画。"
-  - 执行`python config_editor.pyw set fontMapping.baseFontSize 10`。
+  - 执行`python config_editor.py set fontMapping.baseFontSize 10`。
 
 # 常见问题 (FAQ)
 - Q: 脚本不执行？
@@ -111,6 +111,6 @@ metadata:
 - Q: 断句脚本不能运行？
  - A: 确认脚本路径正确，`pip install jieba`。确保Python环境配置正确。
 - Q: 如何人工确认配置？
-  - A: `python config_editor.pyw -c my_config.json`文件，打开界面窗口人工修改配置。
+  - A: `python config_editor.py -c my_config.json`文件，打开界面窗口人工修改配置。
 - Q: vbs脚本不能运行？
   - A: 必须使用全英文，注释也必须使用英文。检查文件路径是否正确，确保VBS脚本有执行权限。查看日志文件`manga_layout_vbs.log`获取错误信息。

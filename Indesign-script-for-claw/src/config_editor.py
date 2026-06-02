@@ -28,6 +28,14 @@ import argparse
 import sys
 
 
+def ensure_unbuffered_io():
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+
+
 CONFIG_SCHEMA = {
     "version": {"type": "string", "desc": "配置版本号", "example": "1.0.0"},
     "description": {"type": "string", "desc": "配置描述", "example": "Manga Layout Automation Configuration"},
@@ -270,44 +278,44 @@ def create_config_from_template(config_path):
 def cli_get(args):
     config_path = args.config or find_default_config()
     if not config_path or not os.path.exists(config_path):
-        print(f"错误: 配置文件未找到", file=sys.stderr)
+        print(f"错误: 配置文件未找到", file=sys.stderr, flush=True)
         sys.exit(1)
     config = load_config_file(config_path)
     value = get_nested_value(config, args.key)
     if value is None:
-        print(f"错误: 键 '{args.key}' 不存在", file=sys.stderr)
+        print(f"错误: 键 '{args.key}' 不存在", file=sys.stderr, flush=True)
         sys.exit(1)
     if isinstance(value, (dict, list)):
-        print(json.dumps(value, ensure_ascii=False, indent=2))
+        print(json.dumps(value, ensure_ascii=False, indent=2), flush=True)
     else:
-        print(value)
+        print(value, flush=True)
 
 
 def cli_set(args):
     config_path = args.config or find_default_config()
     if not config_path:
-        print(f"错误: 配置文件未找到", file=sys.stderr)
+        print(f"错误: 配置文件未找到", file=sys.stderr, flush=True)
         sys.exit(1)
 
     if not os.path.exists(config_path):
         try:
             create_config_from_template(config_path)
-            print(f"配置文件不存在，已从模板生成: {config_path}")
+            print(f"配置文件不存在，已从模板生成: {config_path}", flush=True)
         except Exception as e:
-            print(f"错误: 无法生成配置文件: {e}", file=sys.stderr)
+            print(f"错误: 无法生成配置文件: {e}", file=sys.stderr, flush=True)
             sys.exit(1)
 
     config = load_config_file(config_path)
     value = parse_value(args.value, args.key, config)
     set_nested_value(config, args.key, value)
     save_config_file(config_path, config)
-    print(f"已设置 {args.key} = {json.dumps(value, ensure_ascii=False)}")
+    print(f"已设置 {args.key} = {json.dumps(value, ensure_ascii=False)}", flush=True)
 
 
 def cli_list(args):
     config_path = args.config or find_default_config()
     if not config_path or not os.path.exists(config_path):
-        print(f"错误: 配置文件未找到", file=sys.stderr)
+        print(f"错误: 配置文件未找到", file=sys.stderr, flush=True)
         sys.exit(1)
     config = load_config_file(config_path)
     if args.flat:
@@ -326,20 +334,20 @@ def cli_list(args):
                 val_str = json.dumps(val, ensure_ascii=False)
             else:
                 val_str = str(val)
-            print(f"  {key:<{max_key_len}}  =  {val_str}")
+            print(f"  {key:<{max_key_len}}  =  {val_str}", flush=True)
     else:
-        print(json.dumps(config, ensure_ascii=False, indent=2))
+        print(json.dumps(config, ensure_ascii=False, indent=2), flush=True)
 
 
 def cli_save(args):
     config_path = args.config or find_default_config()
     if not config_path or not os.path.exists(config_path):
-        print(f"错误: 配置文件未找到", file=sys.stderr)
+        print(f"错误: 配置文件未找到", file=sys.stderr, flush=True)
         sys.exit(1)
     config = load_config_file(config_path)
     save_path = args.output or config_path
     save_config_file(save_path, config)
-    print(f"配置已保存到: {save_path}")
+    print(f"配置已保存到: {save_path}", flush=True)
 
 
 def cli_schema(args):
@@ -388,13 +396,13 @@ def cli_run(args):
     # Determine the config provided (via --config) or default
     config_path = args.config or find_default_config()
     if not config_path or not os.path.exists(config_path):
-        print("错误: 配置文件未找到", file=sys.stderr)
+        print("错误: 配置文件未找到", file=sys.stderr, flush=True)
         sys.exit(1)
 
     script_path = find_run_script(config_path)
     if not script_path:
         script_name = "run_manga_layout.sh" if os.name == "posix" else "run_manga_layout.vbs"
-        print(f"错误: 脚本文件未找到: {script_name}", file=sys.stderr)
+        print(f"错误: 脚本文件未找到: {script_name}", file=sys.stderr, flush=True)
         sys.exit(1)
 
     script_dir = os.path.dirname(script_path)
@@ -405,7 +413,7 @@ def cli_run(args):
         if abs_source != abs_target:
             shutil.copyfile(config_path, target_config)
     except Exception as e:
-        print(f"错误: 复制配置文件到运行目录失败: {e}", file=sys.stderr)
+        print(f"错误: 复制配置文件到运行目录失败: {e}", file=sys.stderr, flush=True)
         sys.exit(1)
 
     try:
@@ -414,9 +422,9 @@ def cli_run(args):
         if os.name != "posix":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
         subprocess.Popen(cmd, **popen_kwargs)
-        print(f"已启动脚本: {script_path} (使用配置: {target_config})")
+        print(f"已启动脚本: {script_path} (使用配置: {target_config})", flush=True)
     except Exception as e:
-        print(f"错误: 启动脚本失败: {e}", file=sys.stderr)
+        print(f"错误: 启动脚本失败: {e}", file=sys.stderr, flush=True)
         sys.exit(1)
 
 
@@ -1003,6 +1011,7 @@ def run_gui(config_path):
 
 
 def main():
+    ensure_unbuffered_io()
     parser = build_parser()
     args = parser.parse_args()
 
@@ -1023,7 +1032,7 @@ def main():
         if not config_path:
             config_path = find_default_config()
         if not config_path:
-            print("错误: 未找到配置文件，请使用 --config 指定路径", file=sys.stderr)
+            print("错误: 未找到配置文件，请使用 --config 指定路径", file=sys.stderr, flush=True)
             sys.exit(1)
         run_gui(config_path)
 
