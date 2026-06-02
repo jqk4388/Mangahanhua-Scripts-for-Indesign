@@ -1,7 +1,7 @@
 ---
 name: Indesign-script-for-claw
 description: 基于用户排版需求，自动生成适用于Adobe InDesign的脚本代码，实现批量化、风格化的排版。对漫画嵌字排版有超高适配能力，能够根据用户需求修改配置文件并调用相应脚本实现自动排版。支持Windows和Mac平台，兼容多种InDesign版本。
-version: 1.1.3
+version: 1.1.4
 author: 几千块
 tags: [InDesign, automation, scripting, layout, design, manga, typesetting, ExtendScript, JavaScript, Adobe]
 emoji: "🎨"
@@ -110,6 +110,8 @@ metadata:
   - A: 确认`fontMapping.mapconfig`配置正确，字体已安装。检查字体映射文件路径。
 - Q: 断句脚本不能运行？
  - A: 确认脚本路径正确，`pip install jieba`。确保Python环境配置正确。
+- Q: 翻译稿已经断句，或者用户明确说不断句？
+  - A: 可以直接使用断句后的翻译稿路径设置`textImport.lpTxtPath`，断句选项不启用`segmentation.enabled false`，多行模式开启`textImport.multiLineMode true`，单行模式关闭`textImport.singleLineMode false`。
 - Q: 如何人工确认配置？
   - A: `python config_editor.py -c my_config.json`文件，打开界面窗口人工修改配置。
 - Q: vbs脚本不能运行？
