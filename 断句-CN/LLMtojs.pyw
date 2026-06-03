@@ -23,7 +23,7 @@ DEFAULT_APIS = {
     "OpenAI": "https://api.openai.com/v1/chat/completions",
     "Doubao": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
     "DeepSeek": "https://api.deepseek.com/chat/completions",
-    "Qianwen": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    "Qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
     "Baidu": "https://qianfan.baidubce.com/v2/chat/completions",
     "Tencent": "https://api.hunyuan.cloud.tencent.com/v1/chat/completions",
     "Zhipu": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
@@ -42,7 +42,7 @@ DEFAULT_MODELS = {
     "OpenAI": ["gpt-4.1-2025-04-14", "gpt-5.4-nano-2026-03-17","gpt-5.5"],
     "Doubao": ["doubao-seed-2-0-mini-260428", "doubao-seed-2-0-lite-260428","deepseek-v4-pro-260425", "deepseek-v4-flash-260425"],
     "DeepSeek": ["deepseek-v4-flash", "deepseek-v4-pro"],
-    "Qianwen": ["qwen3.6-flash", "deepseek-v4-flash", "MiniMax/MiniMax-M2.7", "glm-5.1", "qwen3.7-max"],
+    "Qwen": ["qwen3.6-flash", "deepseek-v4-flash", "MiniMax/MiniMax-M2.7", "glm-5.1", "qwen3.7-max"],
     "Baidu": ["ernie-5.0","deepseek-v4-flash","ernie-5.1"],
     "Tencent": ["hy3-preview", "deepseek-v4-flash", "glm-5.1", "glm-5-turbo"],
     "Zhipu": ["glm-5-turbo", "glm-4.7-flash", "glm-4.6v-flash"],
@@ -55,7 +55,11 @@ DEFAULT_MODELS = {
 # Anthropic (Claude) 默认模型示例
 DEFAULT_MODELS["Anthropic"] = ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"]
 
-DEFAULT_MODELS["天翼云"] = []
+DEFAULT_MODELS["天翼云"] = ["DeepSeek-V4-Flash"]
+
+# 小米 MiMo 默认 API 与模型
+DEFAULT_APIS["MiMo"] = "https://api.xiaomimimo.com/v1/chat/completions"
+DEFAULT_MODELS["MiMo"] = ["mimo-v2.5-pro", "mimo-v2-flash"]
 
 # 新增供应商: 移动云
 DEFAULT_APIS["移动云"] = "https://zhenze-huhehaote.cmecloud.cn/v1/chat/completions"
@@ -82,7 +86,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "Line 58: 你知道马是从什么时候开始出现在人类历史中的吗?"
     "Example Output:"
     "听说<BR>我家附近的寺庙<BR>有驱鬼的业务，<BR>于是我特地<BR>前来拜访。"
-    "你知道<BR>马是从什么时候<BR>开始出现在人类历史中的吗？"
+    "你知道<BR>马是从什么时候<BR>开始出现在人类历史中的吗?"
 )
 
 class App:
@@ -290,7 +294,7 @@ class App:
                         # 有些返回直接是列表
                         models = [m.get("name") if isinstance(m, dict) else m for m in data]
                     return models
-            elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qianwen", "Tencent", "Zhipu", "Baidu", "LM Studio", "MiniMax", "OpenRouter", "移动云", "移动云(Coding)", "联通云"]:
+            elif api_type in ["OpenAI", "Doubao", "DeepSeek", "Qwen", "Tencent", "Zhipu", "Baidu", "LM Studio", "MiniMax", "OpenRouter", "移动云", "移动云(Coding)", "联通云", "MiMo"]:
                 models_url = api_url.replace("/chat/completions", "/models")
                 headers = {"Authorization": f"Bearer {api_key}"}
                 resp = requests.get(models_url, headers=headers, timeout=5)
@@ -663,7 +667,44 @@ class App:
                     response = data
                 tokens = data.get("usage", {}).get("total_tokens", 0) if isinstance(data, dict) else 0
                 return response, tokens
-            elif api_type in ["OpenAI", "Doubao", "Qianwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter", "移动云", "移动云(Coding)", "联通云"]:
+            elif api_type == "MiMo":
+                # 小米 MiMo 接口示例：使用 header "api-key"
+                headers = {"api-key": api_key, "Content-Type": "application/json"}
+                # 支持通过 extra_params 覆盖 max_completion_tokens/temperature/top_p 等
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_completion_tokens": extra_params.get("max_completion_tokens", 1024) if isinstance(extra_params, dict) else 1024,
+                    "temperature": extra_params.get("temperature", 1.0) if isinstance(extra_params, dict) else 1.0,
+                    "top_p": extra_params.get("top_p", 0.95) if isinstance(extra_params, dict) else 0.95,
+                    "stream": False
+                }
+                # 合并额外参数（允许覆盖上述字段）
+                if isinstance(extra_params, dict):
+                    payload.update(extra_params)
+                # 如果用户只填了根路径，确保请求到 chat/completions
+                endpoint = api_url if api_url.endswith("/chat/completions") else api_url.rstrip('/') + "/chat/completions"
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=120)
+                resp.raise_for_status()
+                data = resp.json()
+                response = ""
+                # 尝试兼容不同返回结构
+                if isinstance(data, dict):
+                    if data.get("choices"):
+                        try:
+                            response = data["choices"][0]["message"]["content"]
+                        except Exception:
+                            try:
+                                response = data["choices"][0].get("text", "")
+                            except Exception:
+                                response = ""
+                    else:
+                        response = data.get("response") or data.get("text") or ""
+                elif isinstance(data, str):
+                    response = data
+                tokens = data.get("usage", {}).get("total_tokens", 0) if isinstance(data, dict) else 0
+                return response, tokens
+            elif api_type in ["OpenAI", "Doubao", "Qwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter", "移动云", "移动云(Coding)", "联通云"]:
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
                     "model": model,
