@@ -4,7 +4,7 @@
 #
 # Features:
 # - Launch Adobe InDesign on macOS
-# - Execute manga_layout.jsxbin via AppleScript
+# - Execute manga_layout.jsx via AppleScript
 # - Write log output to manga_layout_sh.log
 #
 # Usage:
@@ -15,7 +15,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_PATH="$SCRIPT_DIR/manga_layout_sh.log"
-JSX_PATH="$SCRIPT_DIR/manga_layout.jsxbin"
+JSX_PATH="$SCRIPT_DIR/manga_layout.jsx"
 CONFIG_PATH="$SCRIPT_DIR/manga_layout_config.json"
 
 IDS_APP_PATHS=(

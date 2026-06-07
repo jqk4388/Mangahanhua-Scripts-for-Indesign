@@ -377,8 +377,8 @@ def find_run_script(config_path):
         ]
     else:
         candidates = [
-            os.path.join(config_dir, "run_manga_layout.vbs"),
-            os.path.join(script_dir, "run_manga_layout.vbs"),
+            os.path.join(config_dir, "run_manga_layout.ps1"),
+            os.path.join(script_dir, "run_manga_layout.ps1"),
         ]
     for path in candidates:
         if os.path.exists(path):
@@ -389,7 +389,7 @@ def find_run_script(config_path):
 def get_run_command(script_path):
     if script_path.endswith(".sh"):
         return ["/bin/bash", script_path]
-    return ["cscript", script_path]
+    return ["powershell", script_path]
 
 
 def cli_run(args):
@@ -401,7 +401,7 @@ def cli_run(args):
 
     script_path = find_run_script(config_path)
     if not script_path:
-        script_name = "run_manga_layout.sh" if os.name == "posix" else "run_manga_layout.vbs"
+        script_name = "run_manga_layout.sh" if os.name == "posix" else "run_manga_layout.ps1"
         print(f"错误: 脚本文件未找到: {script_name}", file=sys.stderr, flush=True)
         sys.exit(1)
 
@@ -450,7 +450,7 @@ def build_parser():
             "  %(prog)s save                                      # 保存配置\n"
             "  %(prog)s save --output new_config.json            # 另存为\n"
             "  %(prog)s schema                                    # 查看配置schema说明\n"
-            "  %(prog)s run                                       # 执行manga_layout脚本 (.vbs on Windows, .sh on macOS)\n"
+            "  %(prog)s run                                       # 执行manga_layout脚本 (.ps1 on Windows, .sh on macOS)\n"
         )
     )
     parser.add_argument(
@@ -528,7 +528,7 @@ def build_parser():
     subparsers.add_parser(
         "run",
         help="执行 manga_layout 脚本",
-        description="执行配置文件同目录下的 run_manga_layout.vbs (Windows) 或 run_manga_layout.sh (macOS) 脚本。"
+        description="执行配置文件同目录下的 run_manga_layout.ps1 (Windows) 或 run_manga_layout.sh (macOS) 脚本。"
     )
 
     return parser
@@ -734,7 +734,7 @@ class ConfigEditor:
     def run_manga_layout(self):
         script_path = find_run_script(self.config_path)
         if not script_path:
-            messagebox.showerror("错误", "脚本文件未找到: run_manga_layout.vbs 或 run_manga_layout.sh")
+            messagebox.showerror("错误", "脚本文件未找到: run_manga_layout.ps1 或 run_manga_layout.sh")
             return
         try:
             cmd = get_run_command(script_path)
