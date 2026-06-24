@@ -40,7 +40,7 @@ DEFAULT_APIS["天翼云"] = "https://wishub-x6.ctyun.cn/v1"
 DEFAULT_MODELS = {
     "Ollama": ["deepseek-v4-flash", "deepseek-v4-pro"],
     "OpenAI": ["gpt-4.1-2025-04-14", "gpt-5.4-nano-2026-03-17","gpt-5.5"],
-    "Doubao": ["doubao-seed-2-0-mini-260428", "doubao-seed-2-0-lite-260428","deepseek-v4-pro-260425", "deepseek-v4-flash-260425"],
+    "Doubao": ["doubao-seed-2-0-mini-260428", "doubao-seed-2-1-turbo-260628","doubao-seed-evolving","deepseek-v4-pro-260425", "deepseek-v4-flash-260425"],
     "DeepSeek": ["deepseek-v4-flash", "deepseek-v4-pro"],
     "Qwen": ["qwen3.6-flash", "deepseek-v4-flash", "MiniMax/MiniMax-M2.7", "glm-5.1", "qwen3.7-max"],
     "Baidu": ["ernie-5.0","deepseek-v4-flash","ernie-5.1"],
@@ -704,7 +704,37 @@ class App:
                     response = data
                 tokens = data.get("usage", {}).get("total_tokens", 0) if isinstance(data, dict) else 0
                 return response, tokens
-            elif api_type in ["OpenAI", "Doubao", "Qwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter", "移动云", "移动云(Coding)", "联通云"]:
+            elif api_type == "Doubao":
+                headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [{"type": "text", "text": prompt}]
+                        }
+                    ],
+                    "thinking": {"type": "enabled" if self.think_mode_var.get() else "disabled"},
+                    "stream": False
+                }
+                payload.update(extra_params)
+                resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
+                resp.raise_for_status()
+                data = resp.json()
+                response = ""
+                if isinstance(data, dict):
+                    if data.get("choices"):
+                        try:
+                            response = data["choices"][0]["message"]["content"]
+                        except Exception:
+                            response = data.get("response") or data.get("text") or ""
+                    else:
+                        response = data.get("response") or data.get("text") or ""
+                elif isinstance(data, str):
+                    response = data
+                tokens = data.get("usage", {}).get("total_tokens", 0)
+                return response, tokens
+            elif api_type in ["OpenAI", "Qwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter", "移动云", "移动云(Coding)", "联通云"]:
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
                     "model": model,
