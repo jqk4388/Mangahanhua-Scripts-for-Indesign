@@ -57,6 +57,35 @@ DEFAULT_MODELS["Anthropic"] = ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-
 
 DEFAULT_MODELS["天翼云"] = ["DeepSeek-V4-Flash"]
 
+# 免费模型 API 和固定模型列表
+DEFAULT_APIS["免费模型"] = "https://opencode.ai/zen/v1/chat/completions"
+DEFAULT_MODELS["免费模型"] = [
+    "mimo-v2.5-free",
+    "north-mini-code-free",
+    "nemotron-3-ultra-free",
+    "deepseek-v4-flash-free",
+    "openrouter/free"
+]
+FREE_MODEL_API_URLS = {
+    "mimo-v2.5-free": "https://opencode.ai/zen/v1/chat/completions",
+    "north-mini-code-free": "https://opencode.ai/zen/v1/chat/completions",
+    "nemotron-3-ultra-free": "https://opencode.ai/zen/v1/chat/completions",
+    "deepseek-v4-flash-free": "https://opencode.ai/zen/v1/chat/completions",
+    "openrouter/free": "https://openrouter.ai/api/v1/chat/completions"
+}
+
+# 思考模式extra body示例
+DEFAULT_EXTRA_BODIES = [
+    '{"think": false}',
+    '{"think": true}',
+    '{"enable_thinking": false}',
+    '{"enable_thinking": true}',
+    '{"thinking": {"type": "disabled"}}',
+    '{"thinking": {"type": "enabled"}}',
+    '{"reasoning_effort": "low"}',
+    '{"output_config": {"effort": "low"}}'
+]
+
 # 小米 MiMo 默认 API 与模型
 DEFAULT_APIS["MiMo"] = "https://api.xiaomimimo.com/v1/chat/completions"
 DEFAULT_MODELS["MiMo"] = ["mimo-v2.5-pro", "mimo-v2-flash"]
@@ -107,6 +136,7 @@ class App:
         self.think_mode_var = tk.BooleanVar(value=False)
         self.prompt_var = tk.StringVar(value=DEFAULT_SYSTEM_PROMPT)
         self.extra_params_var = tk.StringVar(value='{"think": false}')
+        self.extra_body_var = tk.StringVar(value=DEFAULT_EXTRA_BODIES[0])
         self.api_keys = {}  # 各平台的API Key
 
         # 配置
@@ -161,8 +191,9 @@ class App:
         ttk.Entry(frame_params, textvariable=self.api_key_var, width=50, show="*").grid(row=2, column=1, sticky="we", padx=4)
 
         ttk.Label(frame_params, text="模型名:").grid(row=3, column=0, sticky="w")
-        self.model_cb = ttk.Combobox(frame_params, textvariable=self.model_var, values=DEFAULT_MODELS["OpenAI"], width=25)
+        self.model_cb = ttk.Combobox(frame_params, textvariable=self.model_var, values=DEFAULT_MODELS["OpenAI"], width=25, state="normal")
         self.model_cb.grid(row=3, column=1, sticky="w", padx=4)
+        self.model_cb.bind("<<ComboboxSelected>>", self.on_model_changed)
         ttk.Button(frame_params, text="加载模型", command=self.load_models).grid(row=3, column=2, padx=4)
 
         ttk.Label(frame_params, text="每任务行数:").grid(row=4, column=0, sticky="w")
@@ -187,6 +218,11 @@ class App:
         ttk.Label(self.adv_panel, text="额外参数 (JSON):").grid(row=1, column=0, sticky="nw")
         ttk.Entry(self.adv_panel, textvariable=self.extra_params_var, width=80).grid(row=1, column=1, sticky="we", padx=4)
 
+        ttk.Label(self.adv_panel, text="思考模式额外 body:").grid(row=2, column=0, sticky="nw")
+        self.extra_body_cb = ttk.Combobox(self.adv_panel, textvariable=self.extra_body_var, values=DEFAULT_EXTRA_BODIES, width=80, state="readonly")
+        self.extra_body_cb.grid(row=2, column=1, sticky="we", padx=4)
+        ttk.Button(self.adv_panel, text="应用到额外参数", command=self.apply_extra_body).grid(row=2, column=2, padx=4)
+
         root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # 控制
@@ -205,9 +241,15 @@ class App:
             self.input_var.set(p)
 
     def browse_output(self):
-        p = filedialog.asksaveasfilename(title="选择输出文件", defaultextension=".txt", filetypes=[("Text files", "*.txt")])
+        p = filedialog.asksaveasfilename(title="选择输出文件", defaultextension=".txt", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
         if p:
             self.output_var.set(p)
+
+    def apply_extra_body(self):
+        body = self.extra_body_var.get().strip()
+        if body:
+            self.extra_params_var.set(body)
+            # messagebox.showinfo("已应用", "已将所选思考模式额外 body 应用到额外参数。")
 
     def toggle_advanced(self):
         if not self.advanced_shown:
@@ -218,6 +260,13 @@ class App:
             self.adv_panel.forget()
             self.adv_button.config(text="显示高级设置")
             self.advanced_shown = False
+
+    def on_model_changed(self, event=None):
+        if self.api_type_var.get() == "免费模型":
+            model = self.model_var.get()
+            api_url = FREE_MODEL_API_URLS.get(model)
+            if api_url:
+                self.api_var.set(api_url)
 
     def on_api_type_changed(self, event=None):
         api_type = self.api_type_var.get()
@@ -232,6 +281,16 @@ class App:
             self.ollama_mode_cb.grid()
             key_name = f"Ollama_{mode}"
             self.api_key_var.set(self.api_keys.get(key_name, ""))
+        elif api_type == "免费模型":
+            self.api_var.set(DEFAULT_APIS.get(api_type, ""))
+            self.model_cb['values'] = DEFAULT_MODELS.get(api_type, [])
+            self.model_var.set(DEFAULT_MODELS.get(api_type, [""])[0] if DEFAULT_MODELS.get(api_type) else "")
+            self.model_cb.config(state="readonly")
+            self.api_key_var.set("")
+            try:
+                self.ollama_mode_cb.grid_forget()
+            except Exception:
+                pass
         else:
             self.api_var.set(DEFAULT_APIS.get(api_type, ""))
             # 隐藏 Ollama 模式选择
@@ -240,14 +299,23 @@ class App:
             except Exception:
                 pass
             self.api_key_var.set(self.api_keys.get(api_type, ""))
-        self.model_cb['values'] = DEFAULT_MODELS.get(api_type, [])
-        self.model_var.set(DEFAULT_MODELS.get(api_type, [""])[0] if DEFAULT_MODELS.get(api_type) else "")
+            self.model_cb.config(state="normal")
+        if api_type != "免费模型":
+            self.model_cb['values'] = DEFAULT_MODELS.get(api_type, [])
+            self.model_var.set(DEFAULT_MODELS.get(api_type, [""])[0] if DEFAULT_MODELS.get(api_type) else "")
 
     def load_models(self):
         api_type = self.api_type_var.get()
         api_url = self.api_var.get().strip()
         api_key = self.api_key_var.get().strip()
-        
+
+        if api_type == "免费模型":
+            self.model_cb['values'] = DEFAULT_MODELS["免费模型"]
+            self.model_var.set(DEFAULT_MODELS["免费模型"][0])
+            self.api_var.set(FREE_MODEL_API_URLS[self.model_var.get()])
+            print("免费模型已加载")
+            return
+
         # Ollama 本地服务不需要 API Key，但 Ollama 在线服务 (ollama.com) 需要
         if api_type not in ("Ollama", "LM Studio") and (not api_url or not api_key):
             messagebox.showerror("错误", "请先填写API地址和Key")
@@ -925,6 +993,7 @@ class App:
                 self.think_mode_var.set(data.get('think_mode', False))
                 self.prompt_var.set(data.get('prompt', DEFAULT_SYSTEM_PROMPT))
                 self.extra_params_var.set(data.get('extra_params', '{"think": false}'))
+                self.extra_body_var.set(data.get('extra_body', DEFAULT_EXTRA_BODIES[0]))
                 self.on_api_type_changed()  # 更新模型列表和API Key
                 print("配置加载成功")
             except Exception as e:
@@ -948,7 +1017,8 @@ class App:
             'max_chars': self.max_chars_var.get(),
             'think_mode': self.think_mode_var.get(),
             'prompt': self.prompt_var.get(),
-            'extra_params': self.extra_params_var.get()
+            'extra_params': self.extra_params_var.get(),
+            'extra_body': self.extra_body_var.get()
         }
         try:
             json_str = json.dumps(data, ensure_ascii=False)
