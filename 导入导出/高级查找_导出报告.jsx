@@ -141,13 +141,35 @@ if (app.documents.length === 0) {
     var directionDropdown = dlg.add("dropdownlist", undefined, ["向前", "向后"]);
     directionDropdown.selection = 0;
 
+    // 执行动作
+    dlg.add("statictext", undefined, "执行动作：");
+    var actionDropdown = dlg.add("dropdownlist", undefined, ["不执行", "隐藏", "删除"]);
+    actionDropdown.selection = 0;
+
     // 按钮组
     var btnGroup = dlg.add("group");
     btnGroup.orientation = "row";
     var findBtn = btnGroup.add("button", undefined, "查找下一个");
+    var executeBtn = btnGroup.add("button", undefined, "执行");
     var exportBtn = btnGroup.add("button", undefined, "导出页面列表");
     var highlightBtn = btnGroup.add("button", undefined, "突出显示");
     var closeBtn = btnGroup.add("button", undefined, "关闭");
+
+    // 调试日志框，palette 内可靠输出
+    dlg.add("statictext", undefined, "日志输出：");
+    var logBox = dlg.add("edittext", undefined, "", {multiline: true, scrolling: true});
+    logBox.minimumSize = [520, 140];
+    logBox.alignment = ["fill", "fill"];
+
+    function log(message) {
+        try {
+            $.writeln(message);
+        } catch (e) {}
+        if (logBox) {
+            logBox.text = logBox.text + message + "\r";
+            logBox.active = true;
+        }
+    }
 
     // 变量保存查找结果
     var foundItems = [];
@@ -247,16 +269,136 @@ if (app.documents.length === 0) {
         }
     }
 
+    function getActionTarget(item) {
+        if (!item) {
+            return item;
+        }
+        try {
+            if (item.constructor && item.constructor.name === "TextFrame") {
+                log("[执行] 目标已经是 TextFrame，直接返回");
+                return item;
+            }
+            if (item.parentTextFrames && item.parentTextFrames.length > 0) {
+                log("[执行] 文本结果，使用父文本框作为目标: " + item.parentTextFrames[0].constructor.name);
+                return item.parentTextFrames[0];
+            }
+        } catch (e) {
+            log("[执行] getActionTarget 安全访问 parentTextFrames 异常: " + e + "\n" + e.message);
+        }
+        if (item) {
+            log("[执行] 直接目标对象类型: " + item.constructor.name);
+        }
+        return item;
+    }
+
+    function showConfirmation(actionText, count) {
+        var confirmDlg = new Window("dialog", "确认操作");
+        confirmDlg.orientation = "column";
+        confirmDlg.alignChildren = "left";
+        confirmDlg.add("statictext", undefined, "确认要" + actionText + "这 " + count + " 个匹配项吗？");
+        var dlgButtons = confirmDlg.add("group");
+        dlgButtons.orientation = "row";
+        dlgButtons.add("button", undefined, "确定", {name: "ok"});
+        dlgButtons.add("button", undefined, "取消", {name: "cancel"});
+        confirmDlg.center();
+        log("[执行] 自定义确认框已创建");
+        var result = confirmDlg.show();
+        log("[执行] confirmDlg.show 返回=" + result);
+        return result === 1;
+    }
+
+    function applyActionToFoundItems(actionType) {
+        try {
+            log("[执行] 开始执行，动作=" + actionType + "，找到数量=" + foundItems.length);
+            if (foundItems.length === 0) {
+                doSearch();
+                log("[执行] 重查后数量=" + foundItems.length);
+                if (foundItems.length === 0) {
+                    alert("未找到匹配项，无法执行。");
+                    return;
+                }
+            }
+
+            var actionText = actionType === "隐藏" ? "隐藏" : "删除";
+            log("[执行] 准备显示自定义确认框");
+            var confirmed = false;
+            try {
+                confirmed = showConfirmation(actionText, foundItems.length);
+            } catch (e) {
+                log("[执行] 自定义确认对话框异常: " + e + "\n" + e.message);
+                confirmed = false;
+            }
+            log("[执行] 自定义确认结果=" + confirmed);
+            if (!confirmed) {
+                log("[执行] 用户取消确认或确认失败");
+                return;
+            }
+
+            log("[执行] 进入处理循环，foundItems 长度=" + foundItems.length);
+            var appliedCount = 0;
+            for (var idx = 0; idx < foundItems.length; idx++) {
+                log("[执行] 处理第 " + (idx + 1) + " 个");
+                var target = getActionTarget(foundItems[idx]);
+                if (!target) {
+                    log("[执行] 第 " + (idx + 1) + " 个目标为空，跳过");
+                    continue;
+                }
+                try {
+                    log("[执行] 第 " + (idx + 1) + " 个目标类型=" + target.constructor.name + "，可见性=" + target.visible);
+                    if (actionType === "隐藏") {
+                        if (typeof target.visible !== "undefined") {
+                            target.visible = false;
+                            appliedCount++;
+                            log("[执行] 已隐藏: " + target.constructor.name);
+                        } else {
+                            log("[执行] 目标不支持 visible");
+                        }
+                    } else if (actionType === "删除") {
+                        if (typeof target.remove === "function") {
+                            target.remove();
+                            appliedCount++;
+                            log("[执行] 已删除: " + target.constructor.name);
+                        } else {
+                            log("[执行] 目标不支持 remove");
+                        }
+                    }
+                } catch (e) {
+                    log("[执行] 处理异常: " + e + "\n" + e.message);
+                }
+            }
+
+            log("[执行] 退出处理循环，appliedCount=" + appliedCount);
+            try {
+                app.redraw();
+                log("[执行] 已调用 app.redraw()");
+            } catch (e) {
+                log("[执行] redraw 异常: " + e);
+            }
+
+            if (appliedCount === 0) {
+                alert("当前条件下没有可执行的目标。" );
+            } else {
+                alert(actionText + "已完成，共处理 " + appliedCount + " 个目标。" );
+            }
+        } catch (e) {
+            log("[执行] applyActionToFoundItems 全局异常: " + e + "\n" + e.message);
+            alert("执行过程中发生错误，请查看日志。\n" + e.message);
+        }
+    }
+
     // 查找下一个
     findBtn.onClick = function() {
+        log("[查找] 点击查找下一个");
         if (foundItems.length === 0) {
             doSearch();
+            log("[查找] 重新搜索后数量=" + foundItems.length);
             if (foundItems.length === 0) {
                 alert("未找到匹配项。");
                 return;
             }
         }
         var dir = directionDropdown.selection.text;
+        log("[查找] 方向=" + dir + "，当前索引=" + currentIndex + "，总数=" + foundItems.length);
         if (dir === "向前") {
             currentIndex--;
             if (currentIndex < 0) currentIndex = foundItems.length - 1;
@@ -265,6 +407,7 @@ if (app.documents.length === 0) {
             if (currentIndex >= foundItems.length) currentIndex = 0;
         }
         var item = foundItems[currentIndex];
+        log("[查找] 选中第 " + (currentIndex + 1) + " 个，类型=" + item.constructor.name);
         // 跳转并选中
         if (item.hasOwnProperty("parentPage") && item.parentPage) {
             app.activeWindow.activePage = item.parentPage;
@@ -279,6 +422,17 @@ if (app.documents.length === 0) {
         }
         app.activeWindow.zoom(ZoomOptions.FIT_PAGE);
         // alert("第 " + (currentIndex + 1) + " 个，共 " + foundItems.length + " 个。");
+    };
+
+    executeBtn.onClick = function() {
+        log("[执行] 点击执行按钮");
+        var actionType = actionDropdown.selection.text;
+        log("[执行] 当前动作下拉值=" + actionType);
+        if (actionType === "不执行") {
+            alert("请选择“隐藏”或“删除”。");
+            return;
+        }
+        applyActionToFoundItems(actionType);
     };
 
     // 导出页面列表
