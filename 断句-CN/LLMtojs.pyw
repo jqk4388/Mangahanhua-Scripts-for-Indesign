@@ -40,7 +40,7 @@ DEFAULT_APIS["天翼云"] = "https://wishub-x6.ctyun.cn/v1"
 DEFAULT_MODELS = {
     "Ollama": ["deepseek-v4-flash", "deepseek-v4-pro"],
     "OpenAI": ["gpt-4.1-2025-04-14", "gpt-5.4-nano-2026-03-17","gpt-5.5"],
-    "Doubao": ["doubao-seed-2-0-mini-260428", "doubao-seed-2-1-turbo-260628","doubao-seed-evolving","deepseek-v4-pro-260425", "deepseek-v4-flash-260425"],
+    "Doubao": ["doubao-seed-2-0-mini-260428", "doubao-seed-evolving", "doubao-seed-2-1-turbo-260628", "deepseek-v4-flash-260425"],
     "DeepSeek": ["deepseek-v4-flash", "deepseek-v4-pro"],
     "Qwen": ["qwen3.6-flash", "deepseek-v4-flash", "MiniMax/MiniMax-M2.7", "glm-5.1", "qwen3.7-max"],
     "Baidu": ["ernie-5.0","deepseek-v4-flash","ernie-5.1"],
@@ -58,7 +58,7 @@ DEFAULT_MODELS["Anthropic"] = ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-
 DEFAULT_MODELS["天翼云"] = ["DeepSeek-V4-Flash"]
 
 # 免费模型 API 和固定模型列表
-DEFAULT_APIS["免费模型"] = "https://opencode.ai/zen/v1/chat/completions"
+DEFAULT_APIS["免费模型"] = "https://opencode.ai/zen/go/v1/chat/completions"
 DEFAULT_MODELS["免费模型"] = [
     "mimo-v2.5-free",
     "north-mini-code-free",
@@ -67,11 +67,12 @@ DEFAULT_MODELS["免费模型"] = [
     "openrouter/free"
 ]
 FREE_MODEL_API_URLS = {
-    "mimo-v2.5-free": "https://opencode.ai/zen/v1/chat/completions",
-    "north-mini-code-free": "https://opencode.ai/zen/v1/chat/completions",
-    "nemotron-3-ultra-free": "https://opencode.ai/zen/v1/chat/completions",
-    "deepseek-v4-flash-free": "https://opencode.ai/zen/v1/chat/completions",
-    "openrouter/free": "https://openrouter.ai/api/v1/chat/completions"
+    "mimo-v2.5-free": "https://opencode.ai/zen/go/v1/chat/completions",
+    "north-mini-code-free": "https://opencode.ai/zen/go/v1/chat/completions",
+    "nemotron-3-ultra-free": "https://opencode.ai/zen/go/v1/chat/completions",
+    "deepseek-v4-flash-free": "https://opencode.ai/zen/go/v1/chat/completions",
+    "openrouter/free": "https://openrouter.ai/api/v1/chat/completions",
+    "nvidia/nemotron-3.5-content-safety:free": "https://openrouter.ai/api/v1/chat/completions"
 }
 
 # 思考模式extra body示例
@@ -131,8 +132,8 @@ class App:
         self.api_key_var = tk.StringVar(value="")
         self.ollama_mode_var = tk.StringVar(value="Local")
         self.model_var = tk.StringVar(value="deepseek-v3.2:cloud")
-        self.task_size_var = tk.IntVar(value=20)
-        self.max_chars_var = tk.IntVar(value=4000)
+        self.task_size_var = tk.IntVar(value=8)
+        self.max_chars_var = tk.IntVar(value=3500)
         self.think_mode_var = tk.BooleanVar(value=False)
         self.prompt_var = tk.StringVar(value=DEFAULT_SYSTEM_PROMPT)
         self.extra_params_var = tk.StringVar(value='{"think": false}')
@@ -525,8 +526,8 @@ class App:
 
         # 收集待处理的行（长行）
         pending_indices = [i for i in range(processed_count, total) if len(lines[i].strip()) >= 5]
-        tasks = self.group_indices_into_tasks(pending_indices, task_size)
-        print(f"初始任务数: {len(tasks)}（过滤后长行: {len(pending_indices)}）")
+        tasks = self.group_indices_into_tasks(pending_indices, task_size, lines, self.max_chars_var.get())
+        print(f"初始任务数: {len(tasks)}（过滤后长行: {len(pending_indices)}，字符阈值: {self.max_chars_var.get()}）")
 
         self.progress["maximum"] = total
         self.progress["value"] = processed_count
@@ -554,7 +555,7 @@ class App:
         while all_failed and not self._stop_flag.is_set() and retry_count < self.max_retries:
             retry_count += 1
             print(f"第 {retry_count} 轮重试，开始处理 {len(all_failed)} 个失败行")
-            retry_tasks = self.group_indices_into_tasks(all_failed, task_size)
+            retry_tasks = self.group_indices_into_tasks(all_failed, task_size, lines, self.max_chars_var.get())
             all_failed = []
             with ThreadPoolExecutor(max_workers=5) as ex:
                 futures = [ex.submit(self.process_task, task, lines) for task in retry_tasks]
@@ -631,6 +632,12 @@ class App:
         prompt += "\nOutput the split text for each line, separated by '----'."
         return prompt
 
+    def get_request_timeout(self, api_type, prompt):
+        prompt_chars = len(prompt or "")
+        if api_type == "Doubao":
+            return 300 if prompt_chars > 2000 else 180
+        return 300 if prompt_chars > 4000 else 180
+
     def call_api(self, prompt):
         api_type = self.api_type_var.get()
         api_url = self.api_var.get()
@@ -644,7 +651,8 @@ class App:
         except json.JSONDecodeError:
             print("额外参数JSON格式错误，使用默认值")
 
-        print(f"调用API: {api_type}, 模型: {model}, URL: {api_url}")
+        timeout = self.get_request_timeout(api_type, prompt)
+        print(f"调用API: {api_type}, 模型: {model}, URL: {api_url}, 超时: {timeout}s, 是否开启思考: {self.think_mode_var.get()}, 额外参数: {extra_params}")
         try:
             if api_type == "Ollama":
                 payload = {
@@ -658,7 +666,7 @@ class App:
                 headers = {}
                 if api_key:
                     headers["Authorization"] = f"Bearer {api_key}"
-                resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
+                resp = requests.post(api_url, json=payload, headers=headers, timeout=timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 # Ollama 可能返回不同结构，优先尝试常见字段
@@ -685,7 +693,7 @@ class App:
                 }
                 # 如果用户在额外参数中设置了 reasoning_effort 或其他 DeepSeek 参数，会被合并
                 payload.update(extra_params)
-                resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
+                resp = requests.post(api_url, json=payload, headers=headers, timeout=timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 # DeepSeek 的返回结构可能包含不同字段，优先尝试常见字段
@@ -718,7 +726,7 @@ class App:
                 for k, v in (extra_params.items() if isinstance(extra_params, dict) else []):
                     if k not in payload:
                         payload[k] = v
-                resp = requests.post(endpoint, json=payload, headers=headers, timeout=120)
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 response = ""
@@ -752,7 +760,7 @@ class App:
                     payload.update(extra_params)
                 # 如果用户只填了根路径，确保请求到 chat/completions
                 endpoint = api_url if api_url.endswith("/chat/completions") else api_url.rstrip('/') + "/chat/completions"
-                resp = requests.post(endpoint, json=payload, headers=headers, timeout=120)
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 response = ""
@@ -786,22 +794,39 @@ class App:
                     "stream": False
                 }
                 payload.update(extra_params)
-                resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
-                resp.raise_for_status()
-                data = resp.json()
-                response = ""
-                if isinstance(data, dict):
-                    if data.get("choices"):
-                        try:
-                            response = data["choices"][0]["message"]["content"]
-                        except Exception:
-                            response = data.get("response") or data.get("text") or ""
-                    else:
-                        response = data.get("response") or data.get("text") or ""
-                elif isinstance(data, str):
-                    response = data
-                tokens = data.get("usage", {}).get("total_tokens", 0)
-                return response, tokens
+                last_error = None
+                for attempt in range(3):
+                    try:
+                        resp = requests.post(api_url, json=payload, headers=headers, timeout=timeout)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        response = ""
+                        if isinstance(data, dict):
+                            if data.get("choices"):
+                                try:
+                                    response = data["choices"][0]["message"]["content"]
+                                except Exception:
+                                    response = data.get("response") or data.get("text") or ""
+                            else:
+                                response = data.get("response") or data.get("text") or ""
+                        elif isinstance(data, str):
+                            response = data
+                        tokens = data.get("usage", {}).get("total_tokens", 0)
+                        return response, tokens
+                    except requests.exceptions.Timeout as exc:
+                        last_error = exc
+                        if attempt < 2:
+                            print(f"豆包请求超时，第 {attempt + 1}/3 次重试: {exc}")
+                            time.sleep(2 + attempt)
+                            continue
+                        print(f"豆包请求超时，已重试 3 次: {exc}")
+                        return "", 0
+                    except Exception as e:
+                        print(f"豆包请求失败: {e}")
+                        return "", 0
+                if last_error is not None:
+                    print(f"豆包请求最终失败: {last_error}")
+                return "", 0
             elif api_type in ["OpenAI", "Qwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter", "移动云", "移动云(Coding)", "联通云"]:
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
@@ -829,7 +854,7 @@ class App:
                     "stream": False
                 }
                 payload.update(extra_params)
-                resp = requests.post(endpoint, json=payload, headers=headers, timeout=120)
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 # 兼容不同返回格式
@@ -884,7 +909,7 @@ class App:
                     ]
                 }
                 payload.update(extra_params)  # 合并额外参数
-                resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
+                resp = requests.post(api_url, json=payload, headers=headers, timeout=timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 response = data.get("contents", [{}])[0].get("parts", [{}])[0].get("text", "")
@@ -925,15 +950,29 @@ class App:
 
         return False, "断句后内容与原文不符，原文：" + original
 
-    def group_indices_into_tasks(self, indices, task_size):
+    def group_indices_into_tasks(self, indices, task_size, lines=None, max_chars=None):
         if not indices:
             return []
         indices = sorted(set(indices))
         tasks = []
-        i = 0
-        while i < len(indices):
-            tasks.append(indices[i:i+task_size])
-            i += task_size
+        current_task = []
+        current_chars = 0
+
+        for idx in indices:
+            line_text = lines[idx] if lines is not None and idx < len(lines) else ""
+            line_chars = len(line_text) + 20
+            if current_task and (
+                len(current_task) >= task_size or
+                (max_chars is not None and current_chars + line_chars > max_chars)
+            ):
+                tasks.append(current_task)
+                current_task = []
+                current_chars = 0
+            current_task.append(idx)
+            current_chars += line_chars
+
+        if current_task:
+            tasks.append(current_task)
         return tasks
 
     def _set_buffer_line(self, index, text):
