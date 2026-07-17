@@ -58,21 +58,23 @@ DEFAULT_MODELS["Anthropic"] = ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-
 DEFAULT_MODELS["天翼云"] = ["DeepSeek-V4-Flash"]
 
 # 免费模型 API 和固定模型列表
-DEFAULT_APIS["免费模型"] = "https://opencode.ai/zen/go/v1/chat/completions"
+DEFAULT_APIS["免费模型"] = "https://api.kilo.ai/api/gateway/chat/completions"
+DEFAULT_OPENROUTER_FREE_KEY = ""
 DEFAULT_MODELS["免费模型"] = [
+    "kilo-auto/free",
     "mimo-v2.5-free",
     "north-mini-code-free",
     "nemotron-3-ultra-free",
     "deepseek-v4-flash-free",
-    "openrouter/free"
+    "openrouter/free",
 ]
 FREE_MODEL_API_URLS = {
-    "mimo-v2.5-free": "https://opencode.ai/zen/go/v1/chat/completions",
-    "north-mini-code-free": "https://opencode.ai/zen/go/v1/chat/completions",
-    "nemotron-3-ultra-free": "https://opencode.ai/zen/go/v1/chat/completions",
-    "deepseek-v4-flash-free": "https://opencode.ai/zen/go/v1/chat/completions",
+    "kilo-auto/free":"https://api.kilo.ai/api/gateway/chat/completions",
+    "mimo-v2.5-free": "https://opencode.ai/zen/v1/chat/completions",
+    "north-mini-code-free": "https://opencode.ai/zen/v1/chat/completions",
+    "nemotron-3-ultra-free": "https://opencode.ai/zen/v1/chat/completions",
+    "deepseek-v4-flash-free": "https://opencode.ai/zen/v1/chat/completions",
     "openrouter/free": "https://openrouter.ai/api/v1/chat/completions",
-    "nvidia/nemotron-3.5-content-safety:free": "https://openrouter.ai/api/v1/chat/completions"
 }
 
 # 思考模式extra body示例
@@ -268,6 +270,10 @@ class App:
             api_url = FREE_MODEL_API_URLS.get(model)
             if api_url:
                 self.api_var.set(api_url)
+            if model == "openrouter/free":
+                self.api_key_var.set(DEFAULT_OPENROUTER_FREE_KEY)
+            elif not self.api_key_var.get().strip():
+                self.api_key_var.set("")
 
     def on_api_type_changed(self, event=None):
         api_type = self.api_type_var.get()
@@ -287,7 +293,10 @@ class App:
             self.model_cb['values'] = DEFAULT_MODELS.get(api_type, [])
             self.model_var.set(DEFAULT_MODELS.get(api_type, [""])[0] if DEFAULT_MODELS.get(api_type) else "")
             self.model_cb.config(state="readonly")
-            self.api_key_var.set("")
+            if self.model_var.get() == "openrouter/free":
+                self.api_key_var.set(DEFAULT_OPENROUTER_FREE_KEY)
+            else:
+                self.api_key_var.set("")
             try:
                 self.ollama_mode_cb.grid_forget()
             except Exception:
@@ -653,6 +662,50 @@ class App:
 
         timeout = self.get_request_timeout(api_type, prompt)
         print(f"调用API: {api_type}, 模型: {model}, URL: {api_url}, 超时: {timeout}s, 是否开启思考: {self.think_mode_var.get()}, 额外参数: {extra_params}")
+
+        def extract_response_content(data):
+            if isinstance(data, str):
+                return data
+            if not isinstance(data, dict):
+                return ""
+
+            if isinstance(data.get("choices"), list) and data["choices"]:
+                choice = data["choices"][0]
+                if isinstance(choice, dict):
+                    message = choice.get("message")
+                    if isinstance(message, dict):
+                        content = message.get("content")
+                        if isinstance(content, str):
+                            return content
+                        if isinstance(content, list):
+                            parts = []
+                            for item in content:
+                                if isinstance(item, dict):
+                                    text = item.get("text") or item.get("content")
+                                    if isinstance(text, str):
+                                        parts.append(text)
+                            return "".join(parts)
+                    text = choice.get("text")
+                    if isinstance(text, str):
+                        return text
+
+            for key in ("response", "text", "completion", "output"):
+                value = data.get(key)
+                if isinstance(value, str):
+                    return value
+                if isinstance(value, list):
+                    parts = []
+                    for item in value:
+                        if isinstance(item, dict):
+                            text = item.get("text") or item.get("content")
+                            if isinstance(text, str):
+                                parts.append(text)
+                        elif isinstance(item, str):
+                            parts.append(item)
+                    if parts:
+                        return "".join(parts)
+            return ""
+
         try:
             if api_type == "Ollama":
                 payload = {
@@ -827,6 +880,24 @@ class App:
                 if last_error is not None:
                     print(f"豆包请求最终失败: {last_error}")
                 return "", 0
+            elif api_type == "免费模型":
+                headers = {"Content-Type": "application/json"}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                    headers["x-api-key"] = api_key
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False
+                }
+                if isinstance(extra_params, dict):
+                    payload.update(extra_params)
+                resp = requests.post(api_url, json=payload, headers=headers, timeout=timeout)
+                resp.raise_for_status()
+                data = resp.json()
+                response = extract_response_content(data)
+                tokens = data.get("usage", {}).get("total_tokens", 0) if isinstance(data, dict) else 0
+                return response or "", tokens
             elif api_type in ["OpenAI", "Qwen", "Zhipu", "LM Studio", "MiniMax", "OpenRouter", "移动云", "移动云(Coding)", "联通云"]:
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
                 payload = {
@@ -840,9 +911,9 @@ class App:
                 resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
                 resp.raise_for_status()
                 data = resp.json()
-                response = data["choices"][0]["message"]["content"]
-                tokens = data.get("usage", {}).get("total_tokens", 0)
-                return response, tokens
+                response = extract_response_content(data)
+                tokens = data.get("usage", {}).get("total_tokens", 0) if isinstance(data, dict) else 0
+                return response or "", tokens
             elif api_type == "天翼云":
                 # 天翼云 Wishub X6 接口兼容类似 OpenAI 的 /v1/chat/completions
                 headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "User-Agent": "PostmanRuntime-ApipostRuntime/1.1.0"}
@@ -920,6 +991,10 @@ class App:
             return "", 0
 
     def split_response(self, response, num_parts):
+        if response is None:
+            response = ""
+        elif not isinstance(response, str):
+            response = str(response)
         if "----" in response:
             parts = [p.strip() for p in response.split("----") if p.strip()]
         else:
