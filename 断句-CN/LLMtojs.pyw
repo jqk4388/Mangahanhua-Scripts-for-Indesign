@@ -904,29 +904,26 @@ class App:
         return parts[:num_parts]
 
     def validate_line(self, original, processed):
-        original = original.strip()
-        # 保留原始的processed版本用于不同比较策略
-        processed_clean = processed.replace('\\r','').strip()
+        original = (original or "").strip()
+        # 删除实际的回车和可能的转义序列，然后去两端空白
+        processed_clean = (processed or "").replace('\r', '').replace('\\r', '').strip()
 
-        # 如果原文包含空格（包括半角空格和全角空格 U+3000），则允许 <BR> 替代空格
-        if ' ' in original or '\u3000' in original:
-            # 将连续空白（包括全角空格）规范化为单个半角空格
-            orig_norm = re.sub('[\\s\u3000]+', ' ', original)
-            # 将 <BR> 视为空格，然后规范化
-            proc_norm = processed_clean.replace('<BR>', ' ')
-            proc_norm = re.sub('[\\s\u3000]+', ' ', proc_norm)
-            if orig_norm == proc_norm:
-                return True, ""
+        def normalize_for_compare(text):
+            text = (text or "").replace('\r', '').replace('\\r', '')
+            text = re.sub(r'<BR>', '', text, flags=re.IGNORECASE)
+            text = re.sub(r'[\s\u3000]+', '', text)
+            return text
 
         # 如果文本较长且返回与原文完全一致（未断句），判为失败
-        if len(original) > 13 and original == processed:
-            return False, "断句后内容与原文相同，原文："+original
+        if len(original) > 13 and original == processed_clean:
+            return False, "断句后内容与原文相同，原文：" + original
 
-        # 默认将 <BR> 移除后与原文比较
-        proc_no_br = processed_clean.replace('<BR>', '')
-        if original != proc_no_br:
-            return False, "断句后内容与原文不符，原文："+original
-        return True, ""
+        # 断句结果允许通过 <BR> 或空白来表达相同的文本内容。
+        # 因此在比较前把 <BR> 与空白都视作可忽略的分隔符。
+        if normalize_for_compare(original) == normalize_for_compare(processed_clean):
+            return True, ""
+
+        return False, "断句后内容与原文不符，原文：" + original
 
     def group_indices_into_tasks(self, indices, task_size):
         if not indices:
