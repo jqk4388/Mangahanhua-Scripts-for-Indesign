@@ -110,6 +110,10 @@ function showMainInterface() {
             }
         };
 
+        // 旋转角度选项
+        var applyRotationCheckbox = rightPanel.add("checkbox", undefined, "应用旋转角度");
+        applyRotationCheckbox.value = true;
+
         // 对象样式下拉：允许用户选择要应用到所有导入文本框的对象样式
         rightPanel.add("statictext", undefined, "对象样式:");
         var objectStyles = [];
@@ -185,6 +189,7 @@ function showMainInterface() {
             baseFontSize: baseFontSize,
             fitTextToFrame: fitTextToFrameCheckbox.value,
             includeFontInfo: includeFontInfoCheckbox.value,
+            applyRotation: applyRotationCheckbox.value,
             objectStyleName: (objectStyleDropdown.selection ? objectStyleDropdown.selection.text : "")
         };
         
@@ -411,7 +416,7 @@ function applyTextProperties(textFrame, fontFamily, detected_font_name, fontSize
     applyParagraphStyle(textFrame, actualFontSize, config);
     
     // 应用旋转角度
-    if (angle !== 0) {
+    if (config && config.applyRotation && angle !== 0) {
         textFrame.rotationAngle = -angle;
     }
 }
