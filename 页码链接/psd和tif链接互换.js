@@ -1,17 +1,17 @@
-// ----------- Relink Image ----------- // 
-// Relinks the base image on the current active page to a converted image saved in the same directory. 
-// This currently only works on the first linked image on a page. 
+// ----------- 重新链接图像 ----------- // 
+// 将当前活动页面上的基础图像重新链接到保存在同一目录中的转换后图像。
+// 目前仅对页面上的第一个链接图像有效。
 //
-// Updated: Jan 14 2021
+// 更新日期：2026年8月3日
 //
-// Example: 
-//  The file linked in your INDD is a PSD. In Photoshop, you convert and flatten the image into a new .tif
-//  You want to relink the image in the INDD to be the new .tif
+// 示例： 
+//  在 INDD 中链接的文件是 PSD。在 Photoshop 中，您将图像转换并合并为新的 .tif
+//  您希望将 INDD 中的图像重新链接为新的 .tif
 // 
-// Note: 
-//  The new image needs to be in the same folder as the original image. 
+// 注意： 
+//  新图像需要与原始图像位于同一文件夹中。 
 
-// Change the below file types as needed!
+// 根据需要修改以下文件类型！
 var fileTypes = [
     { oldType: '.psd', newType: '.tif' },
     { oldType: '.tif', newType: '.psd' },
@@ -26,7 +26,7 @@ function main() {
 
 function isError() {
     if (app.activeDocument.layoutWindows[0].activePage.allGraphics.length < 1) {
-        alert('Please make sure there\'s an image on the active page');
+        alert('请确保活动页面上有图像');
         return true;
     }
     return false;
@@ -37,7 +37,9 @@ function relink(srcImage) {
     for (var i = 0; i < fileTypes.length && !isFound; i++) {
         var ref = fileTypes[i];
         var oldPath = srcImage.itemLink.filePath;
-        var newPath = oldPath.replace(ref.oldType, ref.newType);
+        var escapedExt = ref.oldType.replace(/\./g, '\\.');
+        var extRegex = new RegExp(escapedExt + '$', 'i');
+        var newPath = oldPath.replace(extRegex, ref.newType);
         var newImage = new File(newPath);
 
         if (oldPath.toLowerCase() !== newPath.toLowerCase() && newImage.exists) {
