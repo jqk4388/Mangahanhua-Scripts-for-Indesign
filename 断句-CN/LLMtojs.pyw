@@ -113,7 +113,7 @@ DEFAULT_EXTRA_BODIES = [
 ]
 
 # 短行阈值：字符数低于此值的行直接保留原文，不送入模型
-SHORT_LINE_THRESHOLD = 5
+SHORT_LINE_THRESHOLD = 3
 # 原文与结果完全相同时判为未断句的最小原文长度
 MIN_SPLITTABLE_LEN = 8
 # 单行最大重试次数（超过后回退原文）
@@ -127,7 +127,7 @@ SCRIPT_VERSION = "2.1.0"
 # 提示词模板
 # ============================================================================
 
-# 系统提示词：
+# 系统提示词（纯规则，不含示例）：
 SYSTEM_PROMPT = """你是中文漫画台词断句助手。把每行台词断成几个自然片段，片段之间用 <BR> 分隔。
 
 规则：
@@ -136,24 +136,28 @@ SYSTEM_PROMPT = """你是中文漫画台词断句助手。把每行台词断成�
 3. 不拆散人名、地名、成语等固定词。
 4. 短句（5 字以下）无需断句，原样返回。
 5. 必须断句：超过 10 字且含逗号/分句的行，至少插入一个 <BR>。
-6. 一般在“的”字后断句，除非整句太短。
+6. 一般在"的"字后断句，除非整句太短。"""
 
-下面每行"原文"后跟一行用 → 开头的"断句结果"：
-
-这就是传说中的石像鬼吧，我还是头一回见。
-→ 这就是<BR>传说中的<BR>石像鬼吧，<BR>我还是头一回见。
-
-直子!多半是那家人自己收起来了吧——
-→ 直子!<BR>多半是那家人<BR>自己收起来了吧——
-
-……自从那东西来到家里之后，不好的事情就一直没断过。
-→ ……自从那东西<BR>来到家里之后，<BR>不好的事情<BR>就一直没断过。
-
-古董商带过来的藏品当中正好有这个，我一眼看中了它，就买下来了。
-→ 古董商带过来的<BR>藏品当中正好有这个，<BR>我一眼看中了它，<BR>就买下来了。
-
-嗯?
-→ 嗯?"""
+# 预设示例对话（多轮 few-shot，用作系统提示词后的上下文）
+# 每条为 (用户原文列表, 助手断句结果列表)
+FEWSHOT_EXAMPLES = [
+    (
+        [
+            "这就是传说中的石像鬼吧，我还是头一回见。",
+            "直子!多半是那家人自己收起来了吧——",
+            "……自从那东西来到家里之后，不好的事情就一直没断过。",
+            "古董商带过来的藏品当中正好有这个，我一眼看中了它，就买下来了。",
+            "嗯?",
+        ],
+        [
+            "这就是<BR>传说中的<BR>石像鬼吧，<BR>我还是头一回见。",
+            "直子!<BR>多半是那家人<BR>自己收起来了吧——",
+            "……自从那东西<BR>来到家里之后，<BR>不好的事情<BR>就一直没断过。",
+            "古董商带过来的<BR>藏品当中正好有这个，<BR>我一眼看中了它，<BR>就买下来了。",
+            "嗯?",
+        ],
+    ),
+]
 
 # 输出格式说明（追加到系统提示词之后）
 OUTPUT_FORMAT_JSON = (
@@ -279,42 +283,95 @@ def rebuild_with_original_punct(original, processed):
 # ============================================================================
 
 class PromptBuilder:
-    """构建发送给模型的提示词。"""
+    """构建发送给模型的提示词（多轮消息格式）。"""
 
     def __init__(self, system_prompt, output_format="json"):
         self.system_prompt = system_prompt
         self.output_format = output_format
 
+    # ---------- 内部工具 ----------
+    @staticmethod
+    def _format_fewshot_user(example_inputs, output_format):
+        """构造 few-shot 的用户消息：输出格式说明 + 示例输入行。"""
+        lines = []
+        lines.append(OUTPUT_FORMAT_JSON if output_format == "json" else OUTPUT_FORMAT_TEXT)
+        lines.append("\n\n待断句的台词：")
+        lines.extend(example_inputs)
+        return "\n".join(lines).strip()
+
+    @staticmethod
+    def _format_fewshot_assistant(example_outputs, output_format):
+        """构造 few-shot 的助手消息：与用户消息对应的格式化回答。"""
+        if output_format == "json":
+            safe = [json.dumps(s, ensure_ascii=False) for s in example_outputs]
+            return '{"r": [' + ", ".join(safe) + "]}"
+        else:
+            return "\n----\n".join(example_outputs)
+
+    @staticmethod
+    def messages_to_prompt(messages):
+        """将多轮 messages 折叠成单字符串 prompt（兼容不支持 messages 的接口）。"""
+        if not messages:
+            return ""
+        buf = []
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "") or ""
+            if role == "system":
+                buf.append("【系统】\n" + content)
+            elif role == "user":
+                buf.append("【用户】\n" + content)
+            elif role == "assistant":
+                buf.append("【助手】\n" + content)
+            else:
+                buf.append(f"【{role}】\n" + content)
+        return "\n\n".join(buf)
+
+    # ---------- 主接口 ----------
     def build(self, indices, lines, failure_info=None):
-        """构建包含待断句行的完整提示词。
+        """构建多轮消息列表 messages。
+
+        返回: list[dict]，每项形如 {"role": "system|user|assistant", "content": "..."}
 
         failure_info: dict，索引 idx -> {"reason": 失败原因, "ai_output": AI上次返回}
                       仅重试时传入，用于在提示词中附加上次失败上下文。
         """
-        parts = [self.system_prompt]
-        if self.output_format == "json":
-            parts.append(OUTPUT_FORMAT_JSON)
-        else:
-            parts.append(OUTPUT_FORMAT_TEXT)
+        messages = []
+        # 1. 系统提示词：纯规则
+        messages.append({"role": "system", "content": self.system_prompt})
 
-        # 重试模式：先写入上一轮失败的上下文
+        # 2. 注入预设 few-shot 对话（用户提问 → 助手正确回答）
+        fmt = self.output_format
+        for example_inputs, example_outputs in FEWSHOT_EXAMPLES:
+            user_msg = self._format_fewshot_user(example_inputs, fmt)
+            assistant_msg = self._format_fewshot_assistant(example_outputs, fmt)
+            messages.append({"role": "user", "content": user_msg})
+            messages.append({"role": "assistant", "content": assistant_msg})
+
+        # 3. 构造当前真实用户消息
+        user_parts = []
+        user_parts.append(OUTPUT_FORMAT_JSON if fmt == "json" else OUTPUT_FORMAT_TEXT)
+
+        # 重试模式：附加上轮失败上下文
         has_retry = failure_info and any(idx in failure_info for idx in indices)
         if has_retry:
-            parts.append("\n\n【重要】以下台词之前断句失败，请针对失败原因修正结果：")
+            user_parts.append("\n\n【重要】以下台词之前断句失败，请针对失败原因修正结果：")
             for i, idx in enumerate(indices):
                 info = failure_info.get(idx) if failure_info else None
                 if info:
-                    parts.append(
+                    user_parts.append(
                         f"第 {i + 1} 条「{lines[idx]}」"
                         f" - 上次错误原因：{info.get('reason', '未知')}"
                         f"；上次AI返回：「{info.get('ai_output', '')}」"
                     )
-            parts.append("请重新给出正确断句，避免再次出现同类错误。\n")
+            user_parts.append("请重新给出正确断句，避免再次出现同类错误。\n")
 
-        parts.append("\n\n待断句的台词：")
+        user_parts.append("\n\n待断句的台词：")
         for idx in indices:
-            parts.append(f"{lines[idx]}")
-        return "\n".join(parts)
+            user_parts.append(f"{lines[idx]}")
+
+        messages.append({"role": "user", "content": "\n".join(user_parts)})
+        return messages
 
 
 class ResponseParser:
@@ -636,8 +693,15 @@ class LLMProvider:
         self.extra_params = extra_params if isinstance(extra_params, dict) else {}
         self.think_mode = think_mode
 
-    def chat(self, prompt):
-        """返回 (response_text, token_count)。"""
+    def chat(self, messages):
+        """返回 (response_text, token_count)。
+
+        messages: list[dict]，多轮对话，形如:
+            [{"role": "system", "content": "..."},
+             {"role": "user", "content": "..."},
+             {"role": "assistant", "content": "..."},
+             {"role": "user", "content": "..."}]
+        """
         raise NotImplementedError
 
     def list_models(self):
@@ -698,6 +762,26 @@ class LLMProvider:
         return data.get("eval_count", 0) or 0
 
     @staticmethod
+    def estimate_chars(messages_or_prompt):
+        """估算输入的字符数（messages 列表或单字符串都支持）。"""
+        if isinstance(messages_or_prompt, str):
+            return len(messages_or_prompt)
+        if isinstance(messages_or_prompt, list):
+            total = 0
+            for m in messages_or_prompt:
+                if isinstance(m, dict):
+                    c = m.get("content", "")
+                    if isinstance(c, str):
+                        total += len(c)
+                    elif isinstance(c, list):
+                        for item in c:
+                            if isinstance(item, dict):
+                                t = item.get("text") or item.get("content") or ""
+                                total += len(t)
+            return total
+        return len(str(messages_or_prompt or ""))
+
+    @staticmethod
     def get_timeout(prompt_chars, api_type="", think_mode=False):
         # 思考模式下模型先思考再输出，本地小模型 (~100 token/s) 需要更长等待
         if think_mode:
@@ -716,12 +800,12 @@ class OpenAICompatProvider(LLMProvider):
     # 需要 thinking 字段的供应商
     THINKING_PROVIDERS = {"Doubao", "DeepSeek"}
 
-    def chat(self, prompt):
+    def chat(self, messages):
         headers = {"Authorization": f"Bearer {self.api_key}",
                    "Content-Type": "application/json"}
         payload = {
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "stream": False,
             # 给足输出空间，避免本地小模型默认 max_tokens 过小导致 JSON 被截断
             "max_tokens": 8192,
@@ -734,7 +818,7 @@ class OpenAICompatProvider(LLMProvider):
             payload["enable_thinking"] = self.think_mode
         payload.update(self.extra_params)
 
-        timeout = self.get_timeout(len(prompt), self.api_url_type, self.think_mode)
+        timeout = self.get_timeout(self.estimate_chars(messages), self.api_url_type, self.think_mode)
 
         # 豆包单独处理超时重试
         if self.api_url_type == "Doubao":
@@ -812,11 +896,10 @@ class OpenAICompatProvider(LLMProvider):
 
 
 class BaiduProvider(OpenAICompatProvider):
-    def chat(self, prompt):
+    def chat(self, messages):
         headers = {"Authorization": f"Bearer {self.api_key}",
                    "Content-Type": "application/json"}
-        payload = {"model": self.model,
-                   "messages": [{"role": "user", "content": prompt}]}
+        payload = {"model": self.model, "messages": messages}
         payload.update(self.extra_params)
         endpoint = self._resolve_chat_endpoint()
         try:
@@ -829,11 +912,11 @@ class BaiduProvider(OpenAICompatProvider):
 
 
 class TencentProvider(OpenAICompatProvider):
-    def chat(self, prompt):
+    def chat(self, messages):
         headers = {"Authorization": f"Bearer {self.api_key}",
                    "Content-Type": "application/json"}
         payload = {"model": self.model,
-                   "messages": [{"role": "user", "content": prompt}],
+                   "messages": messages,
                    "enable_enhancement": True}
         payload.update(self.extra_params)
         endpoint = self._resolve_chat_endpoint()
@@ -847,19 +930,33 @@ class TencentProvider(OpenAICompatProvider):
 
 
 class OllamaProvider(LLMProvider):
-    def chat(self, prompt):
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "think": self.think_mode,
-            "keep_alive": 60,
-        }
-        payload.update(self.extra_params)
+    def chat(self, messages):
+        # Ollama /api/generate 接口只接收单字符串 prompt，
+        # 若 URL 指向 /api/chat 则直接传 messages，否则折叠成 prompt
+        is_chat_endpoint = "/api/chat" in self.api_url
         headers = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
+
+        if is_chat_endpoint:
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "stream": False,
+                "think": self.think_mode,
+                "keep_alive": 60,
+            }
+        else:
+            prompt = PromptBuilder.messages_to_prompt(messages)
+            payload = {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+                "think": self.think_mode,
+                "keep_alive": 60,
+            }
+        payload.update(self.extra_params)
+        timeout = self.get_timeout(self.estimate_chars(messages), think_mode=self.think_mode)
         try:
             resp = requests.post(self.api_url, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -872,6 +969,10 @@ class OllamaProvider(LLMProvider):
                         response = data["choices"][0]["message"]["content"]
                     except Exception:
                         pass
+                if not response and data.get("message"):
+                    msg = data["message"]
+                    if isinstance(msg, dict):
+                        response = msg.get("content", "") or ""
             elif isinstance(data, str):
                 response = data
             return response or "", self.extract_tokens(data)
@@ -900,16 +1001,57 @@ class OllamaProvider(LLMProvider):
 
 
 class GeminiProvider(LLMProvider):
-    def chat(self, prompt):
+    @staticmethod
+    def _messages_to_gemini_contents(messages):
+        """将通用 messages 转为 Gemini contents 格式。
+        Gemini 用 role=user/model，且必须交替 user/model，system 角色需内嵌到用户消息。
+        """
+        contents = []
+        system_buf = []
+        for m in messages:
+            role = m.get("role", "user")
+            text = m.get("content", "") or ""
+            if role == "system":
+                system_buf.append(text)
+                continue
+            gemini_role = "user" if role in ("user",) else "model"
+            parts_text = text
+            if system_buf:
+                # 将累计的 system 指令拼入第一个用户消息前
+                parts_text = "\n\n".join(system_buf) + "\n\n" + parts_text
+                system_buf = []
+            contents.append({"role": gemini_role, "parts": [{"text": parts_text}]})
+        # 若最后还剩 system_buf（即无后续用户消息），追加一个占位
+        if system_buf and not contents:
+            contents.append({"role": "user", "parts": [{"text": "\n\n".join(system_buf)}]})
+        # 确保首条为 user
+        if contents and contents[0].get("role") != "user":
+            contents.insert(0, {"role": "user", "parts": [{"text": "(请开始)"}]})
+        return contents
+
+    def chat(self, messages):
         headers = {"x-goog-api-key": self.api_key, "Content-Type": "application/json"}
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        contents = self._messages_to_gemini_contents(messages)
+        payload = {"contents": contents}
         payload.update(self.extra_params)
-        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
+        timeout = self.get_timeout(self.estimate_chars(messages), think_mode=self.think_mode)
         try:
             resp = requests.post(self.api_url, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
             data = resp.json()
-            response = data.get("contents", [{}])[0].get("parts", [{}])[0].get("text", "")
+            # Gemini 返回结构: candidates[0].content.parts[0].text
+            response = ""
+            cands = data.get("candidates") or []
+            if cands:
+                cand = cands[0] if isinstance(cands[0], dict) else {}
+                content = cand.get("content") or {}
+                parts = content.get("parts") or []
+                if parts and isinstance(parts[0], dict):
+                    response = parts[0].get("text", "") or ""
+            # 兼容旧结构
+            if not response:
+                response = (data.get("contents", [{}])[0].get("parts", [{}])[0]
+                            .get("text", ""))
             tokens = data.get("usageMetadata", {}).get("totalTokenCount", 0)
             return response, tokens
         except Exception:
@@ -928,7 +1070,7 @@ class GeminiProvider(LLMProvider):
 
 
 class AnthropicProvider(LLMProvider):
-    def chat(self, prompt):
+    def chat(self, messages):
         headers = {"x-api-key": self.api_key, "Content-Type": "application/json"}
         version = self.extra_params.get("anthropic-version", "2023-06-01")
         headers["anthropic-version"] = version
@@ -936,15 +1078,34 @@ class AnthropicProvider(LLMProvider):
         if not (endpoint.rstrip("/").endswith("/messages") or
                 endpoint.rstrip("/").endswith("/messages/")):
             endpoint = endpoint.rstrip("/") + "/messages"
+
+        # Anthropic messages 接口需要 system 单独参数
+        system_text = ""
+        chat_messages = []
+        for m in messages:
+            role = m.get("role", "user")
+            content = m.get("content", "") or ""
+            if role == "system":
+                if system_text:
+                    system_text += "\n\n" + content
+                else:
+                    system_text = content
+            else:
+                # Anthropic 只接受 user/assistant 角色
+                ar = "assistant" if role == "assistant" else "user"
+                chat_messages.append({"role": ar, "content": content})
+
         payload = {
             "model": self.model,
             "max_tokens": self.extra_params.get("max_tokens", 4096),
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": chat_messages,
         }
+        if system_text:
+            payload["system"] = system_text
         for k, v in self.extra_params.items():
             if k not in payload and k != "anthropic-version":
                 payload[k] = v
-        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
+        timeout = self.get_timeout(self.estimate_chars(messages), think_mode=self.think_mode)
         try:
             resp = requests.post(endpoint, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -1007,11 +1168,11 @@ class AnthropicProvider(LLMProvider):
 
 
 class MiMoProvider(LLMProvider):
-    def chat(self, prompt):
+    def chat(self, messages):
         headers = {"api-key": self.api_key, "Content-Type": "application/json"}
         payload = {
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "max_completion_tokens": self.extra_params.get("max_completion_tokens", 4096),
             "temperature": self.extra_params.get("temperature", 1.0),
             "top_p": self.extra_params.get("top_p", 0.95),
@@ -1021,7 +1182,7 @@ class MiMoProvider(LLMProvider):
         endpoint = self.api_url
         if not endpoint.endswith("/chat/completions"):
             endpoint = endpoint.rstrip("/") + "/chat/completions"
-        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
+        timeout = self.get_timeout(self.estimate_chars(messages), think_mode=self.think_mode)
         try:
             resp = requests.post(endpoint, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -1034,7 +1195,7 @@ class MiMoProvider(LLMProvider):
 class TianyiProvider(LLMProvider):
     """天翼云 Wishub X6。"""
 
-    def chat(self, prompt):
+    def chat(self, messages):
         headers = {"Authorization": f"Bearer {self.api_key}",
                    "Content-Type": "application/json",
                    "User-Agent": "PostmanRuntime-ApipostRuntime/1.1.0"}
@@ -1042,10 +1203,10 @@ class TianyiProvider(LLMProvider):
         if not endpoint.endswith("/chat/completions"):
             endpoint = endpoint.rstrip("/") + "/chat/completions"
         payload = {"model": self.model,
-                   "messages": [{"role": "user", "content": prompt}],
+                   "messages": messages,
                    "stream": False}
         payload.update(self.extra_params)
-        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
+        timeout = self.get_timeout(self.estimate_chars(messages), think_mode=self.think_mode)
         try:
             resp = requests.post(endpoint, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -1082,16 +1243,16 @@ class TianyiProvider(LLMProvider):
 class FreeModelProvider(LLMProvider):
     """免费模型聚合（kilo / opencode / openrouter）。"""
 
-    def chat(self, prompt):
+    def chat(self, messages):
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
             headers["x-api-key"] = self.api_key
         payload = {"model": self.model,
-                   "messages": [{"role": "user", "content": prompt}],
+                   "messages": messages,
                    "stream": False}
         payload.update(self.extra_params)
-        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
+        timeout = self.get_timeout(self.estimate_chars(messages), think_mode=self.think_mode)
         try:
             resp = requests.post(self.api_url, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -1148,6 +1309,7 @@ class SplitProcessor:
         self.output_buffer = None
         self.failure_counts = {}
         self.last_failure_info = {}
+        self.all_fallback = []
         self.total_tokens = 0
         self.start_time = None
 
@@ -1185,6 +1347,7 @@ class SplitProcessor:
         self.total_tokens = 0
         self.failure_counts = {}
         self.last_failure_info = {}
+        self.all_fallback = []
 
         if not os.path.exists(input_path):
             self.log(f"错误：输入文件不存在: {input_path}")
@@ -1236,6 +1399,7 @@ class SplitProcessor:
         all_failed, first_success, first_failed = self._run_tasks(
             tasks, lines, prompt_builder, output_path,
             total, completed, short_lines, progress_cb)
+        first_fallback_count = len(self.all_fallback)
 
         # 重试失败行
         retry_round = 0
@@ -1249,13 +1413,16 @@ class SplitProcessor:
 
         elapsed = time.time() - self.start_time
         model_name = self.app.model_var.get() or "未指定模型"
-        first_total = first_success + first_failed
+        first_fail_total = first_failed + first_fallback_count
+        first_total = first_success + first_fail_total
         first_rate = (first_success / first_total * 100) if first_total > 0 else 100.0
-        final_success = total - len(all_failed)
+        final_fallback = len(self.all_fallback)
+        final_success = total - len(all_failed) - final_fallback
+        final_failed = len(all_failed) + final_fallback
         final_rate = (final_success / total * 100) if total > 0 else 0.0
         summary = (f"[{model_name}] 统计: 总行数 {total} | "
-                   f"首轮: 成功 {first_success}/失败 {first_failed}, 成功率 {first_rate:.1f}% | "
-                   f"最终: 成功 {final_success}/失败 {len(all_failed)}, 成功率 {final_rate:.1f}%")
+                   f"首轮: 成功 {first_success}/失败 {first_fail_total}, 成功率 {first_rate:.1f}% | "
+                   f"最终: 成功 {final_success}/失败 {final_failed}, 成功率 {final_rate:.1f}%")
         if self._stop_flag.is_set():
             self.log(f"已停止，用时 {elapsed:.1f}s，消耗 {self.total_tokens} tokens")
         elif not all_failed:
@@ -1281,11 +1448,12 @@ class SplitProcessor:
                 if self._stop_flag.is_set():
                     break
                 try:
-                    success, failed = fut.result()
+                    success, failed, fallback = fut.result()
                     round_success += len(success)
                     round_failed += len(failed)
-                    completed += len(success)
+                    completed += len(success) + len(fallback)
                     all_failed.extend(failed)
+                    self.all_fallback.extend(fallback)
                     self._flush_buffer(output_path, lines)
                     if progress_cb:
                         progress_cb(completed, total, short_lines)
@@ -1294,10 +1462,10 @@ class SplitProcessor:
         return all_failed, round_success, round_failed
 
     def _process_task(self, indices, lines, prompt_builder, is_retry=False):
-        """处理单个任务（一组行）。返回 (success_indices, failed_indices)。"""
+        """处理单个任务（一组行）。返回 (success_indices, failed_indices, fallback_indices)。"""
         failure_info = self.last_failure_info if is_retry else None
-        prompt = prompt_builder.build(indices, lines, failure_info=failure_info)
-        response, tokens = self._call_api(prompt)
+        messages = prompt_builder.build(indices, lines, failure_info=failure_info)
+        response, tokens = self._call_api(messages)
         self.total_tokens += tokens
 
         # 空响应处理：可能是本地小模型思考模式导致 content 为空
@@ -1305,16 +1473,16 @@ class SplitProcessor:
             # 若开启思考模式，尝试关闭后重试一次
             if self.app.think_mode_var.get():
                 self.log(f"行 {indices[0]}-{indices[-1]}: 响应为空，关闭思考模式重试")
-                response, tokens = self._call_api(prompt, force_no_think=True)
+                response, tokens = self._call_api(messages, force_no_think=True)
                 self.total_tokens += tokens
             if not response or not response.strip():
                 self.log(f"行 {indices[0]}-{indices[-1]}: API 返回空响应")
                 for idx in indices:
                     self.last_failure_info[idx] = {"reason": "API 返回空响应", "ai_output": ""}
-                return [], indices[:]
+                return [], indices[:], []
 
         parts = ResponseParser.parse(response, len(indices))
-        success, failed = [], []
+        success, failed, fallback = [], [], []
         for idx, part in zip(indices, parts):
             original = lines[idx]
             result, ok, reason = Validator.validate(original, part)
@@ -1332,17 +1500,17 @@ class SplitProcessor:
                 self.last_failure_info[idx] = {"reason": reason, "ai_output": part}
                 if self.failure_counts[idx] > MAX_LINE_FAILURES:
                     self._set_buffer(idx, lines[idx])
-                    success.append(idx)
+                    fallback.append(idx)
                     self.log(f"行 {idx}: 失败超限，回退原文")
                 else:
                     failed.append(idx)
                     self.log(f"行 {idx} ✗ {reason}")
                     self.log(f"        原文: {original}")
                     self.log(f"        AI返回: {part}")
-        self.log(f"任务完成 行 {indices[0]}-{indices[-1]}: 成功 {len(success)}，失败 {len(failed)}")
-        return success, failed
+        self.log(f"任务完成 行 {indices[0]}-{indices[-1]}: 成功 {len(success)}，失败 {len(failed)}，回退 {len(fallback)}")
+        return success, failed, fallback
 
-    def _call_api(self, prompt, force_no_think=False):
+    def _call_api(self, messages, force_no_think=False):
         api_type = self.app.api_type_var.get()
         api_url = self.app.api_var.get()
         api_key = self.app.api_key_var.get()
@@ -1353,7 +1521,7 @@ class SplitProcessor:
             extra_params = {}
         think_mode = self.app.think_mode_var.get() and not force_no_think
         provider = create_provider(api_type, api_url, api_key, model, extra_params, think_mode)
-        return provider.chat(prompt)
+        return provider.chat(messages)
 
     def _set_buffer(self, index, text):
         cleaned = (text or "").strip().replace("\r\n", "\n").replace("\r", "")
