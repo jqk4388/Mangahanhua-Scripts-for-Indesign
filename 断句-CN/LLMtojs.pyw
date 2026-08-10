@@ -115,9 +115,12 @@ DEFAULT_EXTRA_BODIES = [
 # 短行阈值：字符数低于此值的行直接保留原文，不送入模型
 SHORT_LINE_THRESHOLD = 5
 # 原文与结果完全相同时判为未断句的最小原文长度
-MIN_SPLITTABLE_LEN = 13
+MIN_SPLITTABLE_LEN = 8
 # 单行最大重试次数（超过后回退原文）
-MAX_LINE_FAILURES = 3
+MAX_LINE_FAILURES = 5
+
+# 脚本版本号：每次更新提示词或配置字段时递增
+SCRIPT_VERSION = "2.1.0"
 
 
 # ============================================================================
@@ -133,14 +136,15 @@ SYSTEM_PROMPT = """你是中文漫画台词断句助手。把每行台词断成�
 3. 不拆散人名、地名、成语等固定词。
 4. 短句（5 字以下）无需断句，原样返回。
 5. 必须断句：超过 10 字且含逗号/分句的行，至少插入一个 <BR>。
+6. 一般在“的”字后断句，除非整句太短。
 
 下面每行"原文"后跟一行用 → 开头的"断句结果"：
 
 这就是传说中的石像鬼吧，我还是头一回见。
-→ 这就是<BR>传说中的石像鬼吧，<BR>我还是头一回见。
+→ 这就是<BR>传说中的<BR>石像鬼吧，<BR>我还是头一回见。
 
-直子!你怎么又说这种话—
-→ 直子!<BR>你怎么又说这种话—
+直子!多半是那家人自己收起来了吧——
+→ 直子!<BR>多半是那家人<BR>自己收起来了吧——
 
 ……自从那东西来到家里之后，不好的事情就一直没断过。
 → ……自从那东西<BR>来到家里之后，<BR>不好的事情<BR>就一直没断过。
@@ -281,13 +285,32 @@ class PromptBuilder:
         self.system_prompt = system_prompt
         self.output_format = output_format
 
-    def build(self, indices, lines):
-        """构建包含待断句行的完整提示词。"""
+    def build(self, indices, lines, failure_info=None):
+        """构建包含待断句行的完整提示词。
+
+        failure_info: dict，索引 idx -> {"reason": 失败原因, "ai_output": AI上次返回}
+                      仅重试时传入，用于在提示词中附加上次失败上下文。
+        """
         parts = [self.system_prompt]
         if self.output_format == "json":
             parts.append(OUTPUT_FORMAT_JSON)
         else:
             parts.append(OUTPUT_FORMAT_TEXT)
+
+        # 重试模式：先写入上一轮失败的上下文
+        has_retry = failure_info and any(idx in failure_info for idx in indices)
+        if has_retry:
+            parts.append("\n\n【重要】以下台词之前断句失败，请针对失败原因修正结果：")
+            for i, idx in enumerate(indices):
+                info = failure_info.get(idx) if failure_info else None
+                if info:
+                    parts.append(
+                        f"第 {i + 1} 条「{lines[idx]}」"
+                        f" - 上次错误原因：{info.get('reason', '未知')}"
+                        f"；上次AI返回：「{info.get('ai_output', '')}」"
+                    )
+            parts.append("请重新给出正确断句，避免再次出现同类错误。\n")
+
         parts.append("\n\n待断句的台词：")
         for idx in indices:
             parts.append(f"{lines[idx]}")
@@ -675,7 +698,12 @@ class LLMProvider:
         return data.get("eval_count", 0) or 0
 
     @staticmethod
-    def get_timeout(prompt_chars, api_type=""):
+    def get_timeout(prompt_chars, api_type="", think_mode=False):
+        # 思考模式下模型先思考再输出，本地小模型 (~100 token/s) 需要更长等待
+        if think_mode:
+            if api_type == "Doubao":
+                return 600 if prompt_chars > 2000 else 360
+            return 600 if prompt_chars > 4000 else 360
         if api_type == "Doubao":
             return 300 if prompt_chars > 2000 else 180
         return 300 if prompt_chars > 4000 else 180
@@ -706,7 +734,7 @@ class OpenAICompatProvider(LLMProvider):
             payload["enable_thinking"] = self.think_mode
         payload.update(self.extra_params)
 
-        timeout = self.get_timeout(len(prompt), self.api_url_type)
+        timeout = self.get_timeout(len(prompt), self.api_url_type, self.think_mode)
 
         # 豆包单独处理超时重试
         if self.api_url_type == "Doubao":
@@ -831,7 +859,7 @@ class OllamaProvider(LLMProvider):
         headers = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        timeout = self.get_timeout(len(prompt))
+        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
         try:
             resp = requests.post(self.api_url, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -876,7 +904,7 @@ class GeminiProvider(LLMProvider):
         headers = {"x-goog-api-key": self.api_key, "Content-Type": "application/json"}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         payload.update(self.extra_params)
-        timeout = self.get_timeout(len(prompt))
+        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
         try:
             resp = requests.post(self.api_url, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -916,7 +944,7 @@ class AnthropicProvider(LLMProvider):
         for k, v in self.extra_params.items():
             if k not in payload and k != "anthropic-version":
                 payload[k] = v
-        timeout = self.get_timeout(len(prompt))
+        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
         try:
             resp = requests.post(endpoint, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -993,7 +1021,7 @@ class MiMoProvider(LLMProvider):
         endpoint = self.api_url
         if not endpoint.endswith("/chat/completions"):
             endpoint = endpoint.rstrip("/") + "/chat/completions"
-        timeout = self.get_timeout(len(prompt))
+        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
         try:
             resp = requests.post(endpoint, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -1017,7 +1045,7 @@ class TianyiProvider(LLMProvider):
                    "messages": [{"role": "user", "content": prompt}],
                    "stream": False}
         payload.update(self.extra_params)
-        timeout = self.get_timeout(len(prompt))
+        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
         try:
             resp = requests.post(endpoint, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -1063,7 +1091,7 @@ class FreeModelProvider(LLMProvider):
                    "messages": [{"role": "user", "content": prompt}],
                    "stream": False}
         payload.update(self.extra_params)
-        timeout = self.get_timeout(len(prompt))
+        timeout = self.get_timeout(len(prompt), think_mode=self.think_mode)
         try:
             resp = requests.post(self.api_url, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
@@ -1119,6 +1147,7 @@ class SplitProcessor:
         self.output_lock = threading.Lock()
         self.output_buffer = None
         self.failure_counts = {}
+        self.last_failure_info = {}
         self.total_tokens = 0
         self.start_time = None
 
@@ -1155,6 +1184,7 @@ class SplitProcessor:
         self.start_time = time.time()
         self.total_tokens = 0
         self.failure_counts = {}
+        self.last_failure_info = {}
 
         if not os.path.exists(input_path):
             self.log(f"错误：输入文件不存在: {input_path}")
@@ -1203,8 +1233,9 @@ class SplitProcessor:
             progress_cb(0, total, short_lines)
         completed = processed_count + len(short_lines) if processed_count == 0 else processed_count
 
-        all_failed = self._run_tasks(tasks, lines, prompt_builder, output_path,
-                                     total, completed, short_lines, progress_cb)
+        all_failed, first_success, first_failed = self._run_tasks(
+            tasks, lines, prompt_builder, output_path,
+            total, completed, short_lines, progress_cb)
 
         # 重试失败行
         retry_round = 0
@@ -1212,33 +1243,47 @@ class SplitProcessor:
             retry_round += 1
             self.log(f"第 {retry_round} 轮重试，剩余 {len(all_failed)} 行")
             retry_tasks = self.group_indices_into_tasks(all_failed, task_size, lines, max_chars)
-            all_failed = self._run_tasks(retry_tasks, lines, prompt_builder, output_path,
-                                         total, 0, [], progress_cb, is_retry=True)
+            all_failed, _, _ = self._run_tasks(
+                retry_tasks, lines, prompt_builder, output_path,
+                total, 0, [], progress_cb, is_retry=True)
 
         elapsed = time.time() - self.start_time
+        model_name = self.app.model_var.get() or "未指定模型"
+        first_total = first_success + first_failed
+        first_rate = (first_success / first_total * 100) if first_total > 0 else 100.0
+        final_success = total - len(all_failed)
+        final_rate = (final_success / total * 100) if total > 0 else 0.0
+        summary = (f"[{model_name}] 统计: 总行数 {total} | "
+                   f"首轮: 成功 {first_success}/失败 {first_failed}, 成功率 {first_rate:.1f}% | "
+                   f"最终: 成功 {final_success}/失败 {len(all_failed)}, 成功率 {final_rate:.1f}%")
         if self._stop_flag.is_set():
             self.log(f"已停止，用时 {elapsed:.1f}s，消耗 {self.total_tokens} tokens")
         elif not all_failed:
             self.log(f"处理完成，用时 {elapsed:.1f}s，消耗 {self.total_tokens} tokens")
         else:
             self.log(f"处理结束，仍有 {len(all_failed)} 行未成功，用时 {elapsed:.1f}s")
+        self.log(summary)
         if done_cb:
             done_cb()
 
     def _run_tasks(self, tasks, lines, prompt_builder, output_path,
                    total, initial_completed, short_lines, progress_cb, is_retry=False):
-        """并行执行一批任务，返回失败行索引列表。"""
+        """并行执行一批任务，返回 (失败行索引列表, 本轮成功数, 本轮失败数)。"""
         all_failed = []
+        round_success = 0
+        round_failed = 0
         completed = initial_completed
         max_workers = 5
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futures = {ex.submit(self._process_task, task, lines, prompt_builder): task
+            futures = {ex.submit(self._process_task, task, lines, prompt_builder, is_retry): task
                         for task in tasks}
             for fut in as_completed(futures):
                 if self._stop_flag.is_set():
                     break
                 try:
                     success, failed = fut.result()
+                    round_success += len(success)
+                    round_failed += len(failed)
                     completed += len(success)
                     all_failed.extend(failed)
                     self._flush_buffer(output_path, lines)
@@ -1246,11 +1291,12 @@ class SplitProcessor:
                         progress_cb(completed, total, short_lines)
                 except Exception as e:
                     self.log(f"任务异常: {e}")
-        return all_failed
+        return all_failed, round_success, round_failed
 
-    def _process_task(self, indices, lines, prompt_builder):
+    def _process_task(self, indices, lines, prompt_builder, is_retry=False):
         """处理单个任务（一组行）。返回 (success_indices, failed_indices)。"""
-        prompt = prompt_builder.build(indices, lines)
+        failure_info = self.last_failure_info if is_retry else None
+        prompt = prompt_builder.build(indices, lines, failure_info=failure_info)
         response, tokens = self._call_api(prompt)
         self.total_tokens += tokens
 
@@ -1263,6 +1309,8 @@ class SplitProcessor:
                 self.total_tokens += tokens
             if not response or not response.strip():
                 self.log(f"行 {indices[0]}-{indices[-1]}: API 返回空响应")
+                for idx in indices:
+                    self.last_failure_info[idx] = {"reason": "API 返回空响应", "ai_output": ""}
                 return [], indices[:]
 
         parts = ResponseParser.parse(response, len(indices))
@@ -1273,6 +1321,7 @@ class SplitProcessor:
             if ok:
                 self._set_buffer(idx, result)
                 success.append(idx)
+                self.last_failure_info.pop(idx, None)
                 # 详细日志：断句前 → 断句后
                 if result != original:
                     self.log(f"行 {idx} ✓: {original}  →  {result}")
@@ -1280,6 +1329,7 @@ class SplitProcessor:
                     self.log(f"行 {idx} ✓: (短句原样) {original}")
             else:
                 self.failure_counts[idx] = self.failure_counts.get(idx, 0) + 1
+                self.last_failure_info[idx] = {"reason": reason, "ai_output": part}
                 if self.failure_counts[idx] > MAX_LINE_FAILURES:
                     self._set_buffer(idx, lines[idx])
                     success.append(idx)
@@ -1332,7 +1382,8 @@ class App:
 
     def __init__(self, root, input_path=None, output_path=None):
         self.root = root
-        root.title("漫画台词智能断句工具 2.0")
+        root.title(f"漫画台词智能断句工具 v{SCRIPT_VERSION}")
+        self._version_checked = False
 
         # 变量
         self.input_var = tk.StringVar(value=input_path or DEFAULT_INPUT)
@@ -1469,6 +1520,9 @@ class App:
         log_scroll = ttk.Scrollbar(frame_log, command=self.log_text.yview)
         log_scroll.pack(side="right", fill="y")
         self.log_text.configure(yscrollcommand=log_scroll.set)
+        self.log_text.tag_configure("success", foreground="#2e7d32")
+        self.log_text.tag_configure("failure", foreground="#c62828")
+        self._last_log_tag = None
 
     # ---------- 文件浏览 ----------
     def _browse_input(self):
@@ -1673,8 +1727,23 @@ class App:
     # ---------- 日志 ----------
     def _log(self, msg):
         def append():
+            text = str(msg)
+            tag = ""
+            if "✓" in text:
+                tag = "success"
+                self._last_log_tag = None
+            elif "✗" in text:
+                tag = "failure"
+                self._last_log_tag = "failure"
+            elif text.startswith("        原文:") or text.startswith("        AI返回:"):
+                tag = self._last_log_tag or ""
+            else:
+                self._last_log_tag = None
             self.log_text.config(state="normal")
-            self.log_text.insert("end", str(msg) + "\n")
+            if tag:
+                self.log_text.insert("end", text + "\n", tag)
+            else:
+                self.log_text.insert("end", text + "\n")
             self.log_text.see("end")
             self.log_text.config(state="disabled")
         try:
@@ -1694,13 +1763,41 @@ class App:
         os.makedirs(d, exist_ok=True)
         return os.path.join(d, "config.json")
 
+    @staticmethod
+    def _parse_version(v):
+        """把 'x.y.z' 版本号转成可比的整数元组，无法解析返回 (0,)。"""
+        try:
+            return tuple(int(x) for x in str(v).strip().split("."))
+        except Exception:
+            return (0,)
+
+    def _prompt_keys_override(self, data):
+        """用脚本默认值覆盖提示词相关字段，保留模型/API相关。"""
+        self.prompt_var.set(SYSTEM_PROMPT)
+        self.prompt_text.delete("1.0", "end")
+        self.prompt_text.insert("1.0", SYSTEM_PROMPT)
+        self.output_format_var.set("json")
+        self.task_size_var.set(40)
+        self.max_chars_var.set(3500)
+        self.extra_params_var.set('{"think": false}')
+        self.extra_body_var.set(DEFAULT_EXTRA_BODIES[0])
+        # 其他字段从 data 保留（模型/API/Key 等）
+
     def load_config(self):
         if not os.path.exists(self.config_file):
+            self._version_checked = True
             return
         try:
             with open(self.config_file, "r", encoding="utf-8") as f:
                 encrypted = f.read()
             data = json.loads(base64.b64decode(encrypted).decode("utf-8"))
+
+            saved_version = data.get("version")
+            current_parsed = self._parse_version(SCRIPT_VERSION)
+            saved_parsed = self._parse_version(saved_version) if saved_version else (0,)
+            needs_upgrade = (not saved_version) or (saved_parsed < current_parsed)
+
+            # —— 先从配置加载所有字段 ——
             self.api_type_var.set(data.get("api_type", "Ollama"))
             self.api_var.set(data.get("api_url", DEFAULT_APIS["Ollama"]))
             self.api_keys = data.get("api_keys", {})
@@ -1718,7 +1815,23 @@ class App:
             self.prompt_text.delete("1.0", "end")
             self.prompt_text.insert("1.0", saved_prompt)
             self._on_api_type_changed()
-            self._log("配置加载成功")
+            self._version_checked = True
+
+            # —— 版本升级判断：提示词字段用脚本新值覆盖，保留模型/API设置 ——
+            if needs_upgrade:
+                old_ver = saved_version if saved_version else "（无版本号）"
+                msg = (f"检测到提示词模板已更新：\n"
+                       f"  配置版本: {old_ver}\n"
+                       f"  当前脚本版本: {SCRIPT_VERSION}\n\n"
+                       f"是否用脚本内的新提示词覆盖配置？\n"
+                       f"（模型、API地址、密钥等设置会保留）")
+                if messagebox.askyesno("提示词升级", msg):
+                    self._prompt_keys_override(data)
+                    self._log(f"提示词模板已升级到 v{SCRIPT_VERSION}")
+                else:
+                    self._log(f"用户保留旧提示词（配置 v{old_ver}）")
+            else:
+                self._log("配置加载成功")
         except Exception as e:
             self._log(f"加载配置失败: {e}")
 
@@ -1729,6 +1842,7 @@ class App:
             self.api_keys[self.api_type_var.get()] = self.api_key_var.get()
         current_prompt = self.prompt_text.get("1.0", "end-1c")
         data = {
+            "version": SCRIPT_VERSION,
             "api_type": self.api_type_var.get(),
             "api_url": self.api_var.get(),
             "api_keys": self.api_keys,
