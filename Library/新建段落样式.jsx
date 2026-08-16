@@ -17,16 +17,14 @@ function createDefaultStyle() {
 }
 
 // 创建指定字号的段落样式
-function createSizeStyle(fontSize) {
+function createSizeStyle(fontSize, previousStyleName) {
     try {
         var doc = app.activeDocument;
-        var rubySize = Math.round(fontSize / 3 * 10) / 10; // 计算拼音字号并保留一位小数
         var styleName = fontSize.toString();
         
         var newStyle = doc.paragraphStyles.add({name: styleName});
-        newStyle.basedOn = doc.paragraphStyles.item("9-默认");
+        newStyle.basedOn = previousStyleName ? doc.paragraphStyles.item(previousStyleName) : doc.paragraphStyles.item("9-默认");
         newStyle.pointSize = fontSize;
-        newStyle.rubyFontSize = rubySize;
         
         return newStyle;
     } catch(e) {
@@ -76,7 +74,8 @@ function main() {
 
         var sizes = generateSizes();
         for (var i = 0; i < sizes.length; i++) {
-            createSizeStyle(sizes[i]);
+            var previousStyleName = i === 0 ? "9-默认" : sizes[i - 1].toString();
+            createSizeStyle(sizes[i], previousStyleName);
         }
 
         alert("段落样式创建完成！");
