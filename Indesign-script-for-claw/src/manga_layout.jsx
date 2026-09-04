@@ -2301,7 +2301,9 @@ function alignTextFramesWithGhost(ghostConfig) {
             return { aligned: 0 };
         }
         
-        // 遍历每个文本框进行对齐
+        // 1. 收集所有「文本框 ↔ 辅助方框」的相交配对，并记录两者中心点距离
+        var pairs = [];
+        
         for (var s = 0; s < textFrames.length; s++) {
             var selObj = textFrames[s];
             
@@ -2312,8 +2314,7 @@ function alignTextFramesWithGhost(ghostConfig) {
             var parentPage = selObj.parentPage;
             if (!parentPage) continue;
             
-            // 在当前页面的物件中，寻找辅助图层且相交的方框
-            var matchedGhost = null;
+            // 在当前页面的物件中，找出所有辅助图层且相交的方框
             var pageItems = parentPage.allPageItems;
             
             for (var i = 0; i < pageItems.length; i++) {
@@ -2322,18 +2323,39 @@ function alignTextFramesWithGhost(ghostConfig) {
                 // 必须是辅助图层的物件
                 if (!item.itemLayer || item.itemLayer.name !== targetLayerName) continue;
                 
-                // 判定相交
+                // 判定相交，相交则记录为候选配对
                 if (isGhostIntersecting(selObj, item)) {
-                    matchedGhost = item;
-                    break;
+                    pairs.push({
+                        tf: selObj,
+                        ghost: item,
+                        dist: ghostCenterDistance(selObj, item)
+                    });
                 }
             }
+        }
+        
+        // 2. 依中心距离「由近到远」排序，再逐组贪婪配对：
+        //    每个辅助方框只吸附距离最近的一个文本框，其余较远的文本框保持不动；
+        //    每个文本框也只会移动一次（对齐到离它最近的辅助方框），避免重复移动。
+        pairs.sort(function(a, b) {
+            return a.dist - b.dist;
+        });
+        
+        var usedGhosts = {};
+        var usedTfs = {};
+        
+        for (var p = 0; p < pairs.length; p++) {
+            var pair = pairs[p];
+            var ghostKey = pair.ghost.id;
+            var tfKey = pair.tf.id;
             
-            // 若找到则执行对齐
-            if (matchedGhost) {
-                alignGhostCenter(selObj, matchedGhost);
-                aligned++;
-            }
+            // 此辅助方框已吸附过更近的文本框，或此文本框已对齐过，则跳过
+            if (usedGhosts[ghostKey] || usedTfs[tfKey]) continue;
+            
+            usedGhosts[ghostKey] = true;
+            usedTfs[tfKey] = true;
+            alignGhostCenter(pair.tf, pair.ghost);
+            aligned++;
         }
         
     } catch (e) {
@@ -2443,6 +2465,27 @@ function alignGhostCenter(obj1, obj2) {
     var new_Y2 = new_Y1 + h1;
     
     obj1.geometricBounds = [new_Y1, new_X1, new_Y2, new_X2];
+}
+
+// 计算两个物件中心点之间的距离（欧氏距离）
+function ghostCenterDistance(obj1, obj2) {
+    var c1 = getGhostItemCenter(obj1);
+    var c2 = getGhostItemCenter(obj2);
+    
+    var dx = c1.x - c2.x;
+    var dy = c1.y - c2.y;
+    
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+// 取得物件的中心点坐标
+function getGhostItemCenter(obj) {
+    var b = obj.geometricBounds; // [y1, x1, y2, x2]
+    
+    return {
+        x: b[1] + (b[3] - b[1]) / 2,
+        y: b[0] + (b[2] - b[0]) / 2
+    };
 }
 
 // ==================== 文档保存函数 ====================

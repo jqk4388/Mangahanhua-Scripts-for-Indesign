@@ -36,42 +36,65 @@ function main() {
         }
 
 
-    // 2. 迴圈處理每一個選取的物件
+    // 2. 收集所有「文字框 ↔ 輔助框」的相交配對，並記錄兩者中心點的距離
+    var pairs = [];
+
     for (var s = 0; s < textFrames.length; s++) {
         var selObj = textFrames[s];
-        
+
         // 只處理未鎖定的物件 (避免選到背景)
         if (selObj.locked) continue;
-        
+
         // 【關鍵優化】：獲取選取物件所在的「容器」(通常是 Page 或 Spread)
         var parentPage = selObj.parent;
-        
+
         // 安全檢查：如果選取物件不在頁面上 (例如在剪貼板)，則跳過
         if (!parentPage || !parentPage.pageItems) continue;
 
         // 【關鍵優化】：只獲取「當前頁面」上的所有物件
         var localItems = parentPage.pageItems;
-        
-        var matchedGhost = null;
 
-        // 在當前頁面的物件中，尋找是「綠框」且「相交」的
+        // 在當前頁面的物件中，找出所有「輔助框」且「相交」的配對
         for (var i = 0; i < localItems.length; i++) {
             var item = localItems[i];
-            
+
             // 快速過濾 1: 必須是輔助圖層的物件
             if (item.itemLayer.name !== targetLayerName) continue;
 
-            // 快速過濾 2: 判定相交
+            // 快速過濾 2: 判定相交，相交則記錄為候選配對
             if (isIntersecting(selObj, item)) {
-                matchedGhost = item;
-                break; // 找到就停
+                pairs.push({
+                    tf: selObj,
+                    ghost: item,
+                    dist: centerDistance(selObj, item)
+                });
             }
         }
+    }
 
-        // 3. 若找到則執行對齊
-        if (matchedGhost) {
-            alignCenter(selObj, matchedGhost);
-        }
+    // 3. 依中心距離「由近到遠」排序，再逐組貪婪配對：
+    //    每個輔助框只吸附距離最近的一文字框，其餘較遠的文字框保持不動；
+    //    每個文字框也只會被移動一次（對齊到離它最近的輔助框），避免重複移動。
+    pairs.sort(function (a, b) {
+        return a.dist - b.dist;
+    });
+
+    var usedGhosts = {};
+    var usedTfs = {};
+    var alignCount = 0;
+
+    for (var p = 0; p < pairs.length; p++) {
+        var pair = pairs[p];
+        var ghostKey = pair.ghost.id;
+        var tfKey = pair.tf.id;
+
+        // 此輔助框已吸附過更近的文字框，或此文字框已對齊過，則跳過
+        if (usedGhosts[ghostKey] || usedTfs[tfKey]) continue;
+
+        usedGhosts[ghostKey] = true;
+        usedTfs[tfKey] = true;
+        alignCenter(pair.tf, pair.ghost);
+        alignCount++;
     }
     
         // 隐藏ghostLayer
@@ -111,6 +134,27 @@ function alignCenter(obj1, obj2) {
     var new_Y2 = new_Y1 + h1;
 
     obj1.geometricBounds = [new_Y1, new_X1, new_Y2, new_X2];
+}
+
+// 計算兩個物件中心點之間的距離（歐式距離）
+function centerDistance(obj1, obj2) {
+    var c1 = getCenter(obj1);
+    var c2 = getCenter(obj2);
+
+    var dx = c1.x - c2.x;
+    var dy = c1.y - c2.y;
+
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+// 取得物件的中心點座標
+function getCenter(obj) {
+    var b = obj.geometricBounds; // [y1, x1, y2, x2]
+
+    return {
+        x: b[1] + (b[3] - b[1]) / 2,
+        y: b[0] + (b[2] - b[0]) / 2
+    };
 }
 
 // 显示UI界面
