@@ -64,12 +64,16 @@ VK_RATIO = 0.12           # 垂直直线形态学核长 / 页高
 CLUSTER_GAP = 6           # 投影聚类时允许的线宽间隙（小图像素）
 STRENGTH_RATIO = 0.40     # 线簇强度阈值 = 最强簇 × 该比例
 STRENGTH_MIN = 40         # 线簇强度绝对下限（小图像素）
-# 版心物理尺寸恒定（同扫描仪同 DPI），但页面在扫描台上的摆放位置有平移，
-# 因此按「检测框尺寸」判定可信度，位置以当页检测为准。
+# 版心物理尺寸恒定（同扫描仪同 DPI）：输出框尺寸一律取共识框、只做整体平移
+# （贴边/居中）；「检测框尺寸」仅用于判定当页检测可信度（ok / 兜底）。
 SIZE_TOL_W = 0.12         # 检测框宽度允许偏差（相对共识框宽）
 SIZE_TOL_H = 0.10         # 检测框高度允许偏差（相对共识框高）
-DELTA_ZONE = 500          # 兜底页平移估计：在共识边 ±该范围（px）内寻找当页线簇
-SHIFT_AGREE = 150         # 平移候选互相一致的最大散布（px）
+# 平移判定阈值全部为相对共识框对应尺寸的比例，自动适配不同分辨率/尺寸的原图：
+ZONE_PCT = 0.10           # 在共识边 ±该比例带内寻找当页实测线
+SHIFT_CAP_PCT_X = 0.09    # 水平平移上限（相对共识框宽）
+SHIFT_CAP_PCT_Y = 0.05    # 垂直平移上限（相对共识框高）
+AGREE_PCT = 0.035         # 多候选互相一致的最大散布（相对共识框对应尺寸）
+INNER_SPAN_MIN = 0.55     # 居中模式：实测两线间距至少为共识框的该比例才算有效证据
 INK_RATIO_MIN = 0.008     # 墨迹占比低于该值视为空白页
 EXTS = ('.jpg', '.jpeg', '.tif', '.tiff', '.png')
 
@@ -201,114 +205,79 @@ def detect_edges(gray):
     return edges, angle, ink_ratio, (hc, vc)
 
 
-def estimate_shift(vc_abs, hc_abs, cons):
-    """兜底页平移估计：在共识版心四边 ±DELTA_ZONE 带内寻找当页线簇，
-    用线簇与对应共识边的偏差估计当页扫描平移量 (dx, dy)。
-    为防止出血页/大标题等内部装饰线误导，仅当 ≥2 个候选互相一致
-    （距中位数 ≤SHIFT_AGREE px）且位移量合理时才采纳，否则返回 0。"""
-    cx1, cy1, cx2, cy2 = cons
-
-    def decide(cands, max_shift):
-        if len(cands) < 2:
-            return 0.0, 0
-        med = float(np.median(cands))
-        if abs(med) > max_shift:
-            return 0.0, len(cands)
-        if max(abs(c - med) for c in cands) > SHIFT_AGREE:
-            return 0.0, len(cands)
-        return med, len(cands)
-
-    dxs = []
-    for x, s in vc_abs:
-        if abs(x - cx1) <= DELTA_ZONE:
-            dxs.append(x - cx1)
-        elif abs(x - cx2) <= DELTA_ZONE:
-            dxs.append(x - cx2)
-    dys = []
-    for y, s in hc_abs:
-        if abs(y - cy1) <= DELTA_ZONE:
-            dys.append(y - cy1)
-        elif abs(y - cy2) <= DELTA_ZONE:
-            dys.append(y - cy2)
-    dx, nx = decide(dxs, 400)
-    dy, ny = decide(dys, 250)
-    return dx, dy, nx, ny
+def _strongest_edge_line(cands, center, zone, agree):
+    """在共识边 center ± zone 带内取最强线簇位置。
+    带内若有两条强度接近（≥80%）且相互分散（>agree）的强线，说明版心线
+    与装饰线打架、有歧义，返回 None 不采用。"""
+    near = sorted([(p, s) for p, s in cands if abs(p - center) <= zone],
+                  key=lambda c: -c[1])
+    if not near:
+        return None
+    p, s = near[0]
+    if len(near) > 1 and near[1][1] >= 0.8 * s and abs(near[1][0] - p) > agree:
+        return None
+    return p
 
 
-def fallback_snap_box(vc_abs, hc_abs, cons):
-    """兜底版心框：优先把共识框各边直接「吸附」到当页实测线。
+def _axis_shift(lines, c_lo, c_hi, size, zone, cap, agree, tol,
+                det_lo=None, det_hi=None):
+    """单轴平移量。框尺寸恒为 size（共识框尺寸），本函数只决定平移多少。
 
-    原理：缺线页通常仍能检测到 2~3 根版心边线（只是没凑齐 4 根或几何
-    校验没过）。对每条共识边，在其 ±DELTA_ZONE 带内找当页最强的线簇
-    作为该边的实测位置——能实测的边直接钉在实线上；找不到的边保留共识
-    位置。同一轴上已实测边相对共识边的位移中位数视为当页扫描平移量
-    （同批扫描版心物理尺寸不变，只有整页摆放平移），补到缺失边上。
+    lines 为当页全部线簇（仅在共识边 ±zone 带内采信）；det_lo/det_hi 为四边
+    检测器已确认的边线位置（已经长线形态学验证，不受 zone 限制——误检内框
+    的边线通常落在带外，需要靠它们做「居中」）。
 
-    防护：
-    - 带内两条强线强度接近且位置分散（≥SHIFT_AGREE）→ 该边有歧义，不吸附；
-    - 轴平移量超上限（x 400 / y 250 px）→ 该轴吸附结果不可信（出血页
-      大标题/装饰线），整轴退回共识位置；
-    - 轴两边都实测但框尺寸偏差超 SIZE_TOL → 夹了内部框线，整轴退回；
-    - 一条边都没吸附时退回 estimate_shift 的整体平移估计。
-
-    返回 (box_abs[x1,y1,x2,y2], n_snapped, sides_str, dx, dy)。
-    sides_str 为已吸附边的标签组合（L=左 T=上 R=右 B=下）。
+    返回 (shift, mode)：
+      snap   两边实测线一致（散布 ≤agree）→ 整框平移到中位位置（框居中于两线）
+      center 两边实测线明显偏近（间距 < size×(1-tol)，误检内框）→ 不缩框，
+             把共识框中点移到两线中点（间距 ≥ INNER_SPAN_MIN×size 才采纳）
+      edge   只找到一条实测线 → 平移共识框贴住该边
+      none   无可靠证据 → 不平移（保留共识位置）
+    任何模式平移量超过 cap（出血页大标题/装饰线误导）都退回 none。
     """
+    lo = _strongest_edge_line(lines, c_lo, zone, agree)
+    if lo is None and det_lo is not None:
+        lo = det_lo
+    hi = _strongest_edge_line(lines, c_hi, zone, agree)
+    if hi is None and det_hi is not None:
+        hi = det_hi
+    offs = [v - c for v, c in ((lo, c_lo), (hi, c_hi)) if v is not None]
+
+    if len(offs) == 2:
+        med = float(np.median(offs))
+        if max(abs(o - med) for o in offs) <= agree:
+            return (med, 'snap') if abs(med) <= cap else (0.0, 'none')
+        # 两线不一致：若实测间距明显小于共识框 → 是误检的内框，
+        # 不允许缩框，改用两线中点居中对齐共识框。
+        span = hi - lo
+        mid = (lo + hi) / 2.0 - (c_lo + c_hi) / 2.0
+        if span < size * (1.0 - tol) and span >= size * INNER_SPAN_MIN \
+                and abs(mid) <= cap:
+            return mid, 'center'
+        # 间距正常或偏大（夹了外侧装饰线）：仍取中位，但受平移上限保护
+        return (med, 'snap') if abs(med) <= cap else (0.0, 'none')
+    if len(offs) == 1:
+        d = float(offs[0])
+        return (d, 'edge') if abs(d) <= cap else (0.0, 'none')
+    return 0.0, 'none'
+
+
+def consensus_box_shift(vc_abs, hc_abs, cons, det=None):
+    """版心框位置：尺寸恒定取共识框，只根据当页实测线整体平移（贴边/居中）。
+    det 为四边检测器确认的 [x1,y1,x2,y2]（可空），其边线不受采信带限制。
+    返回 (dx, dy, mode_x, mode_y)，mode ∈ snap/center/edge/none。
+    所有阈值均为共识框尺寸的比例，自动适配不同分辨率原图。"""
     cx1, cy1, cx2, cy2 = cons
-    cw = cx2 - cx1
-    ch = cy2 - cy1
-
-    def best_line(cands, center):
-        near = [(p, s) for p, s in cands if abs(p - center) <= DELTA_ZONE]
-        if not near:
-            return None
-        near.sort(key=lambda c: -c[1])
-        p, s = near[0]
-        # 次强线强度接近(≥80%)且位置明显分散 → 两条候选强线打架，不可靠
-        if len(near) > 1 and near[1][1] >= 0.8 * s and abs(near[1][0] - p) > SHIFT_AGREE:
-            return None
-        return p
-
-    lx = best_line(vc_abs, cx1)
-    rx = best_line(vc_abs, cx2)
-    ty = best_line(hc_abs, cy1)
-    by = best_line(hc_abs, cy2)
-
-    dxs = [v - c for v, c in ((lx, cx1), (rx, cx2)) if v is not None]
-    dys = [v - c for v, c in ((ty, cy1), (by, cy2)) if v is not None]
-    dx = float(np.median(dxs)) if dxs else None
-    dy = float(np.median(dys)) if dys else None
-
-    # 轴位移超上限 → 该轴吸附不可信，整轴退回
-    if dx is not None and abs(dx) > 400:
-        lx = rx = dx = None
-    if dy is not None and abs(dy) > 250:
-        ty = by = dy = None
-
-    # 两边都实测但框尺寸偏差过大 → 夹了内部框线，整轴退回
-    if lx is not None and rx is not None and abs(rx - lx - cw) / cw > SIZE_TOL_W:
-        lx = rx = dx = None
-    if ty is not None and by is not None and abs(by - ty - ch) / ch > SIZE_TOL_H:
-        ty = by = dy = None
-
-    sides = ''.join(lab for lab, v in (('L', lx), ('T', ty), ('R', rx), ('B', by))
-                    if v is not None)
-    n_snap = len(sides)
-
-    # 一条边都没吸附：退回旧的整体平移估计（≥2 候选一致才平移）
-    if n_snap == 0:
-        dx0, dy0, _, _ = estimate_shift(vc_abs, hc_abs, cons)
-        return [int(round(cx1 + dx0)), int(round(cy1 + dy0)),
-                int(round(cx2 + dx0)), int(round(cy2 + dy0))], 0, '', dx0, dy0
-
-    fx = dx if dx is not None else 0.0
-    fy = dy if dy is not None else 0.0
-    x1 = lx if lx is not None else cx1 + fx
-    x2 = rx if rx is not None else cx2 + fx
-    y1 = ty if ty is not None else cy1 + fy
-    y2 = by if by is not None else cy2 + fy
-    return [int(round(x1)), int(round(y1)), int(round(x2)), int(round(y2))], \
-        n_snap, sides, fx, fy
+    cw, ch = cx2 - cx1, cy2 - cy1
+    dx, mx = _axis_shift(vc_abs, cx1, cx2, cw,
+                         ZONE_PCT * cw, SHIFT_CAP_PCT_X * cw,
+                         AGREE_PCT * cw, SIZE_TOL_W,
+                         det[0] if det else None, det[2] if det else None)
+    dy, my = _axis_shift(hc_abs, cy1, cy2, ch,
+                         ZONE_PCT * ch, SHIFT_CAP_PCT_Y * ch,
+                         AGREE_PCT * ch, SIZE_TOL_H,
+                         det[1] if det else None, det[3] if det else None)
+    return dx, dy, mx, my
 
 
 # ---------------- 主流程 ----------------
@@ -484,32 +453,40 @@ def main():
         if r['status_raw'] == 'manual' or consensus is None:
             status = 'manual'
             confidence = 0.0
-        elif r['edges_abs'] is not None:
-            e = r['edges_abs']
-            ew, eh = e[2] - e[0], e[3] - e[1]
-            dw = abs(ew - cw) / cw
-            dh = abs(eh - ch) / ch
-            if dw <= SIZE_TOL_W and dh <= SIZE_TOL_H:
-                # 尺寸与共识一致 → 位置以当页检测为准（容忍扫描摆放平移）
-                status = 'ok'
-                final_abs = e
-                confidence = round(1.0 - 0.5 * max(dw / SIZE_TOL_W, dh / SIZE_TOL_H), 3)
-            else:
-                # 尺寸不符（误检/特殊版式）：共识框 + 实测边吸附
-                final_abs, n_snap, sides, dx, dy = fallback_snap_box(
-                    r.get('vc_abs', []), r.get('hc_abs', []), consensus)
-                status = 'fallback_consensus'
-                confidence = round(min(0.4 + 0.08 * n_snap, 0.75), 2)
-                note = 'size_mismatch(dw=%.2f,dh=%.2f,snap=%d:%s,shift=%.0f,%.0f)' \
-                       % (dw, dh, n_snap, sides or '-', dx, dy)
         else:
-            # 缺边但内容正常：共识框 + 实测边吸附（检测到几根边就钉几根）
-            final_abs, n_snap, sides, dx, dy = fallback_snap_box(
-                r.get('vc_abs', []), r.get('hc_abs', []), consensus)
-            status = 'fallback_consensus'
-            confidence = round(min(0.3 + 0.12 * n_snap, 0.75), 2)
-            note = 'edges_missing(snap=%d:%s,shift=%.0f,%.0f)' \
-                   % (n_snap, sides or '-', dx, dy)
+            # 所有页版心框尺寸恒定 = 共识框尺寸，只做整体平移（贴边/居中），
+            # 不因为当页检测框偏小就缩框——版心物理大小每页相同。
+            dx, dy, mx, my = consensus_box_shift(
+                r.get('vc_abs', []), r.get('hc_abs', []), consensus,
+                r.get('edges_abs'))
+            final_abs = [int(round(consensus[0] + dx)),
+                         int(round(consensus[1] + dy)),
+                         int(round(consensus[2] + dx)),
+                         int(round(consensus[3] + dy))]
+            pos_note = 'x=%s,y=%s,shift=%.0f,%.0f' % (mx, my, dx, dy)
+            mode_rank = {'snap': 2, 'center': 2, 'edge': 1, 'none': 0}
+            n_good = mode_rank.get(mx, 0) + mode_rank.get(my, 0)
+
+            if r['edges_abs'] is not None:
+                e = r['edges_abs']
+                ew, eh = e[2] - e[0], e[3] - e[1]
+                dw = abs(ew - cw) / cw
+                dh = abs(eh - ch) / ch
+                if dw <= SIZE_TOL_W and dh <= SIZE_TOL_H:
+                    # 四边检测成功且尺寸与共识一致
+                    status = 'ok'
+                    confidence = round(1.0 - 0.5 * max(dw / SIZE_TOL_W, dh / SIZE_TOL_H), 3)
+                else:
+                    # 检测到框但尺寸明显不符（误检内框/特殊版式）→ 兜底，
+                    # 框仍取共识尺寸，位置按贴边/居中平移
+                    status = 'fallback_consensus'
+                    confidence = round(0.35 + 0.08 * n_good, 2)
+                    note = 'size_mismatch(dw=%.2f,dh=%.2f,%s)' % (dw, dh, pos_note)
+            else:
+                # 缺边但内容正常：共识尺寸框 + 贴边/居中平移
+                status = 'fallback_consensus'
+                confidence = round(0.30 + 0.10 * n_good, 2)
+                note = 'edges_missing(%s)' % pos_note
 
         counts[status] += 1
         if status == 'manual':
