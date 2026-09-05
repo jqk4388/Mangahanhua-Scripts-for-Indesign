@@ -1424,9 +1424,23 @@ def gui_main_dialog():
     # === 日志面板 ===
     frm_log = tk.LabelFrame(root, text='运行日志', padx=5, pady=5)
     frm_log.pack(fill='both', expand=True, padx=10, pady=5)
+    # 黑体（SimHei / 「黑体」）优先；其次微软雅黑；最后跟随系统默认。
+    # 用 tkFont.families() 列表比对（f.actual('family') 在别名场景下
+    # 会返回中文名 "黑体" 而非 "SimHei"，不可靠）。
+    import tkinter.font as tkFont
+    try:
+        default_font = tkFont.nametofont('TkDefaultFont')
+    except Exception:
+        default_font = None
+    available = set(tkFont.families())
+    chosen_font = default_font
+    for fam in ('SimHei', '黑体', 'Microsoft YaHei', '微软雅黑'):
+        if fam in available:
+            chosen_font = tkFont.Font(family=fam, size=10)
+            break
     log_text = scrolledtext.ScrolledText(
         frm_log, height=15, state='disabled', wrap='word',
-        font=('Consolas', 9))
+        font=chosen_font)
     log_text.pack(fill='both', expand=True)
 
     # === 按钮 ===
@@ -1464,18 +1478,20 @@ def gui_main_dialog():
                 self._real = real
 
             def write(self, s):
+                # 把 s 按 \n 切成完整行 → 发到 GUI；最后一段（无换行结尾）
+                # 留到缓冲区，由 flush() 时再发。每行独立 try，单行失败不影响其他。
                 if not s:
-                    return
-                self._buf.write(s)
-                # 按行拆，前缀写入 GUI；剩余留在缓冲区
-                while '\n' in s:
-                    line, s = s.split('\n', 1)
-                    if line:
+                    return 0
+                lines = s.split('\n')
+                rest = lines[-1]
+                for line in lines[:-1]:
+                    try:
                         append_log(line)
-                # 行尾片段也先发，最后 flush 时合并
-                if s:
-                    self._buf.write(s)
-                return len(line) if line else 0
+                    except Exception:
+                        pass
+                if rest:
+                    self._buf.write(rest)
+                return len(s)
 
             def flush(self):
                 # 把缓冲区里的残留行（无换行结尾）补一个换行发给 GUI
@@ -1483,7 +1499,10 @@ def gui_main_dialog():
                 self._buf.seek(0)
                 self._buf.truncate(0)
                 if rest:
-                    append_log(rest)
+                    try:
+                        append_log(rest)
+                    except Exception:
+                        pass
                 try:
                     self._real.flush()
                 except Exception:
