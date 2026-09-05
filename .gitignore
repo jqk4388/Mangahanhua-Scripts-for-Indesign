@@ -4,3 +4,5 @@ _build
 manga_layout_config*.json
 *.pyc
 Indesign-script-for-claw/*.zip
+_tmp_*
+*.md
