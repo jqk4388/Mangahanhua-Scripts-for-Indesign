@@ -84,6 +84,7 @@ import cv2
 # ---------------- 参数 ----------------
 
 WORK_LONG = 1500          # 分析时缩放到的长边像素
+SCAN_MIN_LEN = 250         # HoughLinesP / 角度过滤的最小长度（WORK_LONG 缩放图上的像素数）
 BIN_THRESH = 170          # 灰度二值化阈值（< 该值视为墨迹）
 HK_RATIO = 0.24           # 水平直线形态学核长 / 页宽
 VK_RATIO = 0.12           # 垂直直线形态学核长 / 页高
@@ -119,8 +120,43 @@ HF_NEG_T = 150          # 页脚/框线 负极性（黑底白字，反白）—�
 HF_SNAP = True          # 是否用页眉/页脚附近的竖边线紧贴共识框
 HF_REF_WIN = 0.12       # 共识边修正：在共识边 ±该比例（相对共识宽）内找竖线
 HF_REF_CAP = 0.50       # 共识边修正量上限（相对图宽 W），防止灾难性漂移
+HF_REF_CAP_Y = 0.15     # 共识 y 修正量上限（相对图高 H），防止页眉/页脚修正后框过小
+HF_Y_MARGIN = 0.006     # 页眉下方 / 页脚上方留白（相对图高 H）
 HF_V_BASE_W = 0.80      # 合并候选时「整页长竖线」相对「检测带竖线」的权重
 HF_V_MERGE_PX = 0.004   # 竖线合并容差（相对图宽）
+
+# --- 共识宽校准（成对竖线间距众数）---
+# 必须成对投票，x1 / x2 各自独立找簇不保证配对，宽度会飘（方案 §4.7.1）。
+HF_PW_BIN = 40.0        # 间距投票格宽（绝对像素）
+HF_PW_EDGE = (0.03, 0.96)   # 有效竖线 x/W 区间（下界含窄边距卷，上界排除裁切线）
+HF_PW_RANGE = (0.55, 0.90)  # 合理版心宽 / 图宽
+HF_PW_MIN_N = 12        # 峰格最少支持页数
+HF_PW_TOL = 0.12        # 与原共识宽的最大相对偏差（仅在证据弱时作为安全阀）
+# 证据足够强时允许覆盖原共识宽（缺边多的卷基础共识本身不可信，见 §4.7.5）。
+HF_PW_STRONG_N = 40     # 强证据阈值：峰格支持页数 ≥ 该值则允许大幅改宽
+HF_PW_STRONG_RANGE = (0.62, 0.95)   # 强证据下的合理宽 / 图宽
+
+# --- 共识高校准（同页「页眉基准线 → 页脚基准线」净跨距）---
+# 规则与推导见方案 §4.7.4：共识框上下边必须落在页眉底边与页脚顶边之内。
+HF_PH_BIN = 40.0        # 跨距投票格宽（绝对像素）
+HF_PH_RANGE = (0.55, 0.95)  # 合理版心高 / 图高
+HF_PH_MIN_N = 6         # 峰格支持页数达此值才走众数；不足则用全部同页样本中位
+
+# --- 角点定位（共识框左上角 / 下角贴「框线交点」）见方案 §4.7.2 ---
+HF_CORNER_TOL = 0.008   # 角点聚类容差（x 相对图宽 W，y 相对图高 H）
+HF_CORNER_MIN_N = 4     # 角点稳定簇最少页数
+HF_CORNER_RATIO = 0.08  # 稳定簇页数比例下限
+HF_CORNER_CAP = 0.35    # 角点定位相对原位置的修正上限（相对图宽 / 图高）
+HF_CORNER_SPAN = 0.35   # 页眉下方 / 页脚上方的候选搜索跨度（相对图高）
+HF_PC_YW = 0.30         # 逐页选角：y 方向的距离权重
+HF_PC_XGATE = 0.25      # 逐页选角：交点 x 与页眉侧锚点的最大偏离（相对图宽）
+
+# --- 基准线「紧邻」约束（见方案 §4.7.6）---
+HF_PC_NEAR = 0.045      # 基准线与页眉底边 / 页脚顶边的最大距离（相对图高 H）
+HF_PC_BELOW = 0.030     # 允许基准线落在页脚顶边【下方】的容差（相对图高 H）
+HF_PC_OFF_MIN_N = 8     # 统计「线y − 页脚顶边」中位偏移所需的最少有线页数
+HF_PC_BOTH_TOL = 0.030  # 两端估计差在此内取均值，超出则信页脚（相对图高 H）
+HF_PC_FXGATE = 0.030    # 页脚侧交点门控（相对图宽 W，远紧于页眉侧）
 
 # --- 页眉 ---
 HF_BX0, HF_BX1 = 0.05, 0.45   # 种子搜索左窄带（避开右侧黑网点块）
@@ -153,6 +189,7 @@ HF_CUT_W = (0.40, 1.9)        # 谷点切分：每段宽 / 平均字宽
 HF_CUT_T = 0.35               # 谷点阈值 = min + 该系数 × (max − min)
 HF_CUT_MAX = 24               # 每个候选保留的切分组合上限（控制内存）
 HF_CUT_PAGE_MAX = 48          # 每页保留的切分组合总数上限
+HF_CUT_TOPK = 26              # 页脚字形切分前先按谷点深度留 TopK 列，避免组合爆炸
 
 # --- 页脚 范式 A（相对页底）---
 HF_A_H = (0.0070, 0.0170)     # 先验字高 / sH
@@ -258,7 +295,7 @@ def estimate_skew(horiz_mask):
     """用水平直线像素估计整页倾斜角（度），失败返回 0。"""
     try:
         lines = cv2.HoughLinesP(horiz_mask, 1, np.pi / 180,
-                                threshold=200, minLineLength=250, maxLineGap=10)
+                                threshold=200, minLineLength=SCAN_MIN_LEN, maxLineGap=10)
         if lines is None:
             return 0.0
         angles = []
@@ -266,7 +303,7 @@ def estimate_skew(horiz_mask):
             x1, y1, x2, y2 = ln
             dx, dy = x2 - x1, y2 - y1
             length = (dx * dx + dy * dy) ** 0.5
-            if length < 250:
+            if length < SCAN_MIN_LEN:
                 continue
             ang = np.degrees(np.arctan2(dy, dx))
             if abs(ang) <= 2.0:
@@ -556,8 +593,8 @@ def _hf_cut_sets(prof, wbb, nd):
     cand = [i for i in range(2, wbb - 1) if prof[i] <= thr]
     if not cand:
         cand = list(range(2, wbb - 1))
-    if len(cand) > 26:
-        cand = sorted(sorted(cand, key=lambda i: prof[i])[:26])
+    if len(cand) > HF_CUT_TOPK:
+        cand = sorted(sorted(cand, key=lambda i: prof[i])[:HF_CUT_TOPK])
     out = []
     for combo in itertools.combinations(cand, nd - 1):
         bnds = [0] + list(combo) + [wbb]
@@ -778,9 +815,13 @@ def hf_footer_paradigm_a(recs):
 
 
 def _hf_train(seed):
-    """以 str(page) 为标签累加 0-9 字形模板（逐块 z-score 后取平均再归一）。"""
+    """以 str(页号) 为标签累加 0-9 字形模板（逐块 z-score 后取平均再归一）。
+
+    seed 形如 {文件名: (页号, [字形, ...])}；标签必须取页号而非 dict 的 key，
+    否则位数不匹配、模板全空（见方案 §7）。
+    """
     acc = dict((d, []) for d in '0123456789')
-    for n, gl in seed.items():
+    for _name, (n, gl) in seed.items():
         ds = str(n)
         if len(ds) != len(gl):
             continue
@@ -815,7 +856,7 @@ def _hf_score(c, n, tm):
 
 def hf_footer_paradigm_b(recs):
     """范式 B（相对分镜横线）：横线对齐种子 → 字形自学习 → 全卷回扫。单轮，不自举
-    （自举在实测中反而把召回从 95.0% 降到 91.7%）。"""
+    （自举会降低召回，见方案 §7）。"""
     seed = {}
     for r in recs:
         n = r['page']
@@ -845,7 +886,8 @@ def hf_footer_paradigm_b(recs):
                 anc.append((best[0], c))
         if anc:
             anc.sort(key=lambda t: t[0])
-            seed[r['name']] = anc[0][1]['gl']
+            # 值必须带页号：_hf_train 用它作字形标签（key 是文件名，不可当标签）
+            seed[r['name']] = (n, anc[0][1]['gl'])
     info = dict(n_seed=len(seed))
     if len(seed) < HF_B_MIN_SEED:
         info['reason'] = 'seed_insufficient'
@@ -1263,18 +1305,89 @@ def _cluster_sorted(xs, tol):
     return clusters
 
 
-def hf_refine_consensus_x(cons, records):
+def hf_calib_consensus_width(cons, records):
+    """用「成对竖线间距的众数」校准共识框宽度（并顺带给出左右边的绝对位置）。
+
+    独立修正左右边可能取到不同对框线、宽度因此失真；成对间距众数才是真实
+    版心宽。做法与阈值依据见方案 §4.7.1。
+
+    返回 (新共识, info)。info['w'] 为采信的宽；未采信时 info['used']=False。
+    """
+    W = max(1, int(np.median([r['w'] for r in records if r.get('w')])))
+    cw0 = cons[2] - cons[0]
+    box = {}
+    pairs = []
+    for r in records:
+        nm = r.get('name')
+        rW = r.get('w') or W
+        vs = r.get('hf_vlines') or []
+        xs = sorted(x for x, st in vs
+                    if HF_PW_EDGE[0] * rW <= x <= HF_PW_EDGE[1] * rW)
+        for i in range(len(xs)):
+            for j in range(i + 1, len(xs)):
+                d = xs[j] - xs[i]
+                if HF_PW_RANGE[0] * rW <= d <= HF_PW_RANGE[1] * rW:
+                    box.setdefault(int(round(d / HF_PW_BIN)), set()).add(nm)
+                    pairs.append((xs[i], xs[j], d))
+    info = {'used': False, 'n_pair': len(pairs), 'w0': round(cw0, 1)}
+    if not box:
+        info['reason'] = 'no_pair'
+        return cons, info
+    best, bn = None, -1
+    for k in box:
+        tot = set()
+        for dk in (-1, 0, 1):
+            tot |= box.get(k + dk, set())
+        if len(tot) > bn:
+            bn, best = len(tot), k
+    info['peak_w'] = round(best * HF_PW_BIN, 1)
+    info['peak_pages'] = bn
+    if bn < HF_PW_MIN_N:
+        info['reason'] = 'peak_too_weak'
+        return cons, info
+    # 峰内（±1.5 格）所有对 → 宽 / 左 / 右 的中位数
+    sel = [(a, b, d) for a, b, d in pairs
+           if abs(d - best * HF_PW_BIN) <= 1.5 * HF_PW_BIN]
+    if not sel:
+        info['reason'] = 'peak_empty'
+        return cons, info
+    wmed = float(np.median([d for _, _, d in sel]))
+    lmed = float(np.median([a for a, _, _ in sel]))
+    rmed = float(np.median([b for _, b, _ in sel]))
+    info.update(w=round(wmed, 1), x1=round(lmed, 1), x2=round(rmed, 1),
+                n_sel=len(sel))
+    strong = bn >= HF_PW_STRONG_N
+    info['strong'] = bool(strong)
+    if strong:
+        if not (HF_PW_STRONG_RANGE[0] * W <= wmed <= HF_PW_STRONG_RANGE[1] * W):
+            info['reason'] = 'strong_out_of_range'
+            return cons, info
+    elif abs(wmed - cw0) / max(1.0, cw0) > HF_PW_TOL:
+        info['reason'] = 'delta_too_large'
+        return cons, info
+    # 采信：宽度改为 wmed，左右边取峰内中位（这一对本身就是配对的，天然贴齐）
+    out = [lmed, cons[1], lmed + wmed, cons[3]]
+    info['used'] = True
+    info['dw'] = round(wmed - cw0, 1)
+    return out, info
+
+
+def hf_refine_consensus_x(cons, records, lock_width=False):
     """用页眉/页脚带的竖线修正共识框左右边，使共识框紧贴这些垂直边线。
 
-    策略：整卷竖线聚类后，取最外侧的「稳定簇」作为边框，而不是搜索「离原
-    共识边最近的线」（后者会被内部框线误导，如 db 原共识 x2 落在内部分镜
-    隔线上）。只改 x1 / x2 两个常数（全书共用一套），框尺寸仍然恒定，不做
-    逐页缩放；修正量受 HF_REF_CAP 限制，防止灾难性漂移。
+    策略：整卷竖线聚类后，在「原共识边 ±HF_REF_WIN」窗口内找最近的稳定簇；
+    窗口内无稳定簇时，退回原共识边（避免被页边/内部隔线拉偏）。只改 x1 / x2
+    两个常数（全书共用一套），框尺寸仍然恒定，不做逐页缩放；修正量受
+    HF_REF_CAP 限制，防止灾难性漂移。
+
+    lock_width=True 时（宽度已由 hf_calib_consensus_width 校准）只做整体平移，
+    不再各自拉边——否则校准好的宽度会被重新破坏。
     """
     cx1, cx2 = cons[0], cons[2]
     cw = cx2 - cx1
     W = max(1, int(np.median([r['w'] for r in records if r.get('w')])))
     cap = HF_REF_CAP * W   # 按图宽而非共识宽（共识宽本身可能就偏窄）
+    win = HF_REF_WIN * cw  # 只采信原共识边附近的竖线
     tol = max(4.0, HF_V_MERGE_PX * W)
     n = 0
     all_x = []
@@ -1288,19 +1401,41 @@ def hf_refine_consensus_x(cons, records):
     arr = np.asarray(all_x, float)
     need = max(10, int(0.15 * n))
 
-    def outer_med(xs, from_min):
+    def nearest_stable(xs, target):
+        """在 xs 中找 target 附近 ±win 内最近的稳定簇；无则返回 None。"""
+        if len(xs) == 0:
+            return None, 0
         clusters = _cluster_sorted(xs, tol)
         sig = [c for c in clusters if len(c) >= need]
         if not sig:
             return None, 0
-        chosen = sig[0] if from_min else sig[-1]
-        return float(np.median(chosen)), len(chosen)
+        best = None
+        best_d = float('inf')
+        for c in sig:
+            med = float(np.median(c))
+            if abs(med - target) <= win:
+                d = abs(med - target)
+                if d < best_d:
+                    best_d, best = d, c
+        if best is None:
+            return None, 0
+        return float(np.median(best)), len(best)
 
-    L, nL = outer_med(arr[arr <= W * 0.35], from_min=True)
-    R, nR = outer_med(arr[arr >= W * 0.65], from_min=False)
+    # 左边界只看左半页（< 0.45W），右边界只看右半页（> 0.55W），避免跨半页误采
+    L, nL = nearest_stable(arr[arr <= W * 0.45], cx1)
+    R, nR = nearest_stable(arr[arr >= W * 0.55], cx2)
 
     out = list(cons)
     moved = [0.0, 0.0]
+    if lock_width:
+        # 宽度已由成对间距校准过 → 只允许【整体平移】，不得再各自拉边，
+        # 否则刚校准好的宽度会被两边独立修正重新破坏。
+        ds = [v - t for v, t in ((L, cx1), (R, cx2)) if v is not None]
+        if ds:
+            d = max(-cap, min(cap, float(np.mean(ds))))
+            out[0], out[2] = cx1 + d, cx2 + d
+            moved = [d, d]
+        return out, moved, (nL, nR, n)
     if L is not None:
         d = L - cx1
         d = max(-cap, min(cap, d))
@@ -1310,6 +1445,551 @@ def hf_refine_consensus_x(cons, records):
         d = max(-cap, min(cap, d))
         out[2], moved[1] = cx2 + d, d
     return out, moved, (nL, nR, n)
+
+
+def hf_refine_consensus_y(cons, records):
+    """用页眉底边 / 页脚顶边修正共识框上下边，使共识框位于页眉下方、页脚上方。
+
+    全书仍共用一套 y1 / y2；修正量受 HF_REF_CAP_Y 限制，并保证框高不低于
+    原共识高的 55%，防止过度裁剪。页眉/页脚检测失效时，退回检测带内最强的
+    水平框线作为边界证据。
+    """
+    cy1, cy2 = cons[1], cons[3]
+    ch = cy2 - cy1
+    W = max(1, int(np.median([r['w'] for r in records if r.get('w')])))
+    H = max(1, int(np.median([r['h'] for r in records if r.get('h')])))
+    cap = HF_REF_CAP_Y * H
+    margin = HF_Y_MARGIN * H
+    min_h = max(1, int(round(ch * 0.55)))
+
+    def _header_bottom(r):
+        hb = r.get('hf_header')
+        if not hb or not hb.get('box'):
+            return None
+        s = r.get('hf_s', HF_IW / float(W))
+        return hb['box'][3] / s
+
+    def _footer_top(r):
+        fb = r.get('hf_footer')
+        if not fb or not fb.get('box'):
+            return None
+        s = r.get('hf_s', HF_IW / float(W))
+        return H * (1.0 - HF_BOTR) + fb['box'][1] / s
+
+    header_bottoms = [v for v in (_header_bottom(r) for r in records) if v is not None]
+    footer_tops = [v for v in (_footer_top(r) for r in records) if v is not None]
+
+    # fallback: 用页眉/页脚带的水平框线，但只取「紧贴原共识边、向内容侧移动」的线。
+    # 对 y1 找页眉带中位于原 y1 下方且最近的一条；对 y2 找页脚带中位于原 y2 上方且最近的一条。
+    # 这样避免把 y2 大幅上提到内部 Panel 分割线，只裁剪真正的页眉/页脚白边。
+    if not header_bottoms:
+        vals = []
+        for r in records:
+            bands = r.get('hf_bands') or []
+            s = r.get('hf_s', HF_IW / float(W))
+            for nm, y0, segs in bands:
+                if nm != 'near_header':
+                    continue
+                best = None
+                for q in segs:
+                    if q['o'] == 'h' and q['lnr'] >= HF_T_SHORT:
+                        y_abs = y0 + (q['y'] + q['h']) / s
+                        # 必须位于原 y1 下方，且在 cap 范围内
+                        if cy1 < y_abs <= cy1 + cap and (best is None or y_abs < best):
+                            best = y_abs
+                if best is not None:
+                    vals.append(best)
+        if vals:
+            header_bottoms = vals
+    # 注：y2 不启用水平框线 fallback。页脚带内的横线多为内部 Panel 分割线，
+    # 用作内容下边界会过度裁剪内容（如 082/061 的底部插画/文字）。
+    # 只有真正检测到页码（hf_footer）时才移动 y2；检测失败时保持原共识 y2。
+
+    out = list(cons)
+    moved = [0.0, 0.0]
+    n_hb, n_ft = len(header_bottoms), len(footer_tops)
+
+    # 页眉：用 p90 底边，保证大多数页的页眉都被排除；下方加留白
+    if n_hb:
+        new_y1 = float(np.percentile(header_bottoms, 90)) + margin
+        d = new_y1 - cy1
+        # 只向下移动（d>0），不向上
+        if d > 0:
+            d = min(d, cap)
+            if cy2 - (cy1 + d) >= min_h:
+                out[1], moved[0] = cy1 + d, d
+
+    # 页脚：用 p10 顶边，保证大多数页的页脚都被排除；上方加留白
+    if n_ft:
+        new_y2 = float(np.percentile(footer_tops, 10)) - margin
+        d = new_y2 - cy2
+        # 只向上移动（d<0），不向下
+        if d < 0:
+            d = max(d, -cap)
+            if (cy2 + d) - out[1] >= min_h:
+                out[3], moved[1] = cy2 + d, d
+
+    return out, moved, (n_hb, n_ft)
+
+
+def hf_band_corners(segs, y0, s, y_lo=None, y_hi=None):
+    """在一条带内求「水平框线 × 垂直框线」的交点（角点），换算回绝对像素。
+
+    segs 是归一化带图（宽 IW）上的线段，y 坐标相对带起点 y0。
+    角点取法：水平线取【下沿】（内容在线下方，框顶边贴线的下沿），
+    垂直线取【中心】（框侧边压在线上）。两者必须真正相交才算角点。
+
+    返回 [(x_abs, y_abs, strength), ...]。
+    """
+    hs = [q for q in segs if q['o'] == 'h']
+    vs = [q for q in segs if q['o'] == 'v']
+    if not hs or not vs:
+        return []
+    out = []
+    for hq in hs:
+        hx0, hx1 = hq['x'], hq['x'] + hq['w']       # 水平线 x 跨度（归一化）
+        hyb = hq['y'] + hq['h']                     # 水平线下沿（归一化，带内）
+        for vq in vs:
+            vy0, vy1 = vq['y'], vq['y'] + vq['h']   # 垂线 y 跨度（归一化，带内）
+            vxc = vq['x'] + vq['w'] / 2.0           # 垂线 x 中心（归一化）
+            # 相交：垂线 x 落在水平线跨度内，且水平线下沿落在垂线跨度内
+            if not (hx0 - 1 <= vxc <= hx1 + 1):
+                continue
+            if not (vy0 - 1 <= hyb <= vy1 + 1):
+                continue
+            x_abs = vxc / s
+            y_abs = y0 + hyb / s
+            if y_lo is not None and y_abs < y_lo:
+                continue
+            if y_hi is not None and y_abs > y_hi:
+                continue
+            out.append((x_abs, y_abs, float(hq['lnr'] * vq['lnr'])))
+    return out
+
+
+def hf_band_hlines(segs, y0, s, y_lo=None, y_hi=None):
+    """带内水平框线 → [(x0_abs, x1_abs, y_abs, lnr), ...]，y 取【下沿】。
+
+    用于「找不到横竖真交点」时的降级对齐，见方案 §4.7.6。
+    """
+    out = []
+    for q in segs:
+        if q['o'] != 'h':
+            continue
+        y_abs = y0 + (q['y'] + q['h']) / s
+        if y_lo is not None and y_abs < y_lo:
+            continue
+        if y_hi is not None and y_abs > y_hi:
+            continue
+        out.append((q['x'] / s, (q['x'] + q['w']) / s, y_abs, float(q['lnr'])))
+    return out
+
+
+def hf_page_baselines(r, W, H):
+    """【逐页】提取上下对齐基准线 —— 全书对齐规则的唯一证据源。
+
+    对齐规则、搜索窗约束与降级策略见方案 §4.7.6。
+
+    返回 dict:
+      top = (y, x_or_None, kind)  上基准线；x 为 None 表示该轴无可信证据
+      bot = (y, x_or_None, kind)  下基准线
+    kind ∈ 'corner' / 'hline' / 'ftop' / 'ftop_adj'。
+    任一项可能为 None（该端无页眉/页脚）。
+    """
+    s = r.get('hf_s')
+    bands = r.get('hf_bands') or []
+    if not s or not bands:
+        return {'top': None, 'bot': None}
+    rH = r.get('h') or H
+    rW = r.get('w') or W
+    hb = r.get('hf_header')
+    fb = r.get('hf_footer')
+    side = r.get('hf_side') or ('L' if (r.get('page') or 1) % 2 else 'R')
+    xgate = HF_PC_XGATE * rW
+    out = {'top': None, 'bot': None}
+
+    # ---- 上基准线：页眉下方 ----
+    if hb and hb.get('box'):
+        hy_b = hb['box'][3] / s                 # 页眉框底边（绝对像素）
+        # 页眉朝页面外侧那条边：奇页(L)取左边，偶页(R)取右边
+        hx_o = (hb['box'][0] if side == 'L' else hb['box'][2]) / s
+        pts, hls = [], []
+        for nm, y0, segs in bands:
+            if nm != 'near_header':
+                continue
+            pts += hf_band_corners(segs, y0, s, y_lo=hy_b,
+                                   y_hi=hy_b + HF_CORNER_SPAN * rH)
+            hls += hf_band_hlines(segs, y0, s, y_lo=hy_b,
+                                  y_hi=hy_b + HF_CORNER_SPAN * rH)
+        best, bd = None, float('inf')
+        for (cx, cy, st) in pts:
+            if cy < hy_b or abs(cx - hx_o) > xgate:
+                continue
+            d = abs(cx - hx_o) + abs(cy - hy_b) * HF_PC_YW
+            if d < bd:
+                bd, best = d, (cy, cx, 'corner')
+        if best is not None:
+            out['top'] = best
+        else:
+            # 降级：只用横线定 y；x 返回 None = 该轴不动（§4.7.6）
+            cand = [t for t in hls if t[2] >= hy_b]
+            if cand:
+                cand.sort(key=lambda t: (abs(t[2] - hy_b), -t[3]))
+                out['top'] = (cand[0][2], None, 'hline')
+
+    # ---- 下基准线：页脚上方 ----
+    if fb and fb.get('box'):
+        fy_t = rH * (1.0 - HF_BOTR) + fb['box'][1] / s   # 页脚框顶边（绝对）
+        # 页脚朝页面外侧那条边：奇页(L)取左，偶页(R)取右
+        fx_o = (fb['box'][0] if side == 'L' else fb['box'][2]) / s
+        # 搜索窗必须紧邻页脚（§4.7.6）
+        y_lo = fy_t - HF_PC_NEAR * rH
+        y_hi = fy_t + HF_PC_BELOW * rH
+        pts, hls = [], []
+        for nm, y0, segs in bands:
+            if nm != 'near_footer':
+                continue
+            pts += hf_band_corners(segs, y0, s, y_lo=y_lo, y_hi=y_hi)
+            hls += hf_band_hlines(segs, y0, s, y_lo=y_lo, y_hi=y_hi)
+        ys = [(abs(t[2] - fy_t), -t[3], t[2]) for t in hls if y_lo <= t[2] <= y_hi]
+        for (cx, cy, st) in pts:
+            if y_lo <= cy <= y_hi:
+                ys.append((abs(cy - fy_t), -st, cy))
+        if ys:
+            ys.sort(key=lambda t: (t[0], t[1]))
+            by, kind = ys[0][2], 'hline'
+        else:
+            # 窗内无横线 → 用页脚框顶边兜底，卷级再统一补偏移（§4.7.6）
+            by, kind = fy_t, 'ftop'
+        # x：fx_o 本身即合法答案，交点只作精修，门控用 HF_PC_FXGATE
+        fxgate = HF_PC_FXGATE * rW
+        bx, bdx = None, float('inf')
+        for (cx, cy, st) in pts:
+            if abs(cy - by) > max(4.0, HF_CORNER_TOL * rH):
+                continue
+            dx = abs(cx - fx_o)
+            if dx <= fxgate and dx < bdx:
+                bdx, bx = dx, cx
+        if bx is not None:
+            out['bot'] = (by, bx, 'corner' if kind != 'ftop' else 'ftop')
+        else:
+            out['bot'] = (by, fx_o, kind)
+    return out
+
+
+def hf_fix_ftop_baselines(records, H):
+    """卷级补偿：把 kind='ftop' 的下基准线从「页脚顶边」推回「横线位置」。
+
+    用有线页统计 off = 线y − 页脚顶边 的中位数，补到无线页上，使两批页落在
+    同一条物理线上。原理见方案 §4.7.6。
+
+    就地改写 r['hf_base']['bot']，返回 (n_fix, off_med)。
+    """
+    offs = []
+    for r in records:
+        b = (r.get('hf_base') or {}).get('bot')
+        fb = r.get('hf_footer')
+        s = r.get('hf_s')
+        if not b or not fb or not fb.get('box') or not s:
+            continue
+        if b[2] == 'ftop':
+            continue
+        rH = r.get('h') or H
+        fy_t = rH * (1.0 - HF_BOTR) + fb['box'][1] / s
+        offs.append(b[0] - fy_t)
+    off = float(np.median(offs)) if len(offs) >= HF_PC_OFF_MIN_N else 0.0
+    n = 0
+    for r in records:
+        base = r.get('hf_base') or {}
+        b = base.get('bot')
+        if not b or b[2] != 'ftop':
+            continue
+        base['bot'] = (b[0] + off, b[1], 'ftop_adj' if off else 'ftop')
+        n += 1
+    return n, off
+
+
+def hf_calib_consensus_height(cons, records):
+    """校准共识框高度：以「同页同时有页眉和页脚」的页实测净跨距为准。
+
+    规则见方案 §4.7.4：共识框上下边必须落在页眉底边与页脚顶边【之内】，
+    不得与页眉页脚重叠。同页跨距是唯一权威依据；同页样本不足时才降级到
+    全书两端中位相减，并同样受净跨距上限约束。
+
+    返回 (新共识, info)。未采信时 info['used'] = False，共识原样返回。
+    """
+    W = max(1, int(np.median([r['w'] for r in records if r.get('w')])))
+    H = max(1, int(np.median([r['h'] for r in records if r.get('h')])))
+    ch0 = cons[3] - cons[1]
+    box = {}
+    spans = []
+    for r in records:
+        bl = r.get('hf_base') or hf_page_baselines(r, W, H)
+        t, b = bl.get('top'), bl.get('bot')
+        if not t or not b:
+            continue                      # 只统计「页眉页脚都有」的页
+        rH = r.get('h') or H
+        d = b[0] - t[0]
+        if not (HF_PH_RANGE[0] * rH <= d <= HF_PH_RANGE[1] * rH):
+            continue
+        box.setdefault(int(round(d / HF_PH_BIN)), set()).add(r.get('name'))
+        spans.append((t[0], b[0], d))
+    info = {'used': False, 'n_both': len(spans), 'h0': round(ch0, 1)}
+    # 净跨距上限：同页实测跨距的中位。共识高不得超过它，否则必然与页眉
+    # 或页脚重叠（方案 §4.7.4）。同页样本为 0 时无上限可用。
+    cap = float(np.median([d for _, _, d in spans])) if spans else None
+    if cap is not None:
+        info['span_med'] = round(cap, 1)
+
+    def _fallback():
+        """降级：全书上基准中位 − 全书下基准中位。
+
+        两端样本来自不同批页面，属于混批统计，可能超出真实净跨距，
+        因此结果须再受同页净跨距上限裁剪（见方案 §4.7.4）。
+        """
+        tys = [r['hf_base']['top'][0] for r in records
+               if (r.get('hf_base') or {}).get('top')]
+        bys = [r['hf_base']['bot'][0] for r in records
+               if (r.get('hf_base') or {}).get('bot')]
+        info['n_top'], info['n_bot'] = len(tys), len(bys)
+        if len(tys) < HF_PH_MIN_N or len(bys) < HF_PH_MIN_N:
+            info.setdefault('reason', 'sides_too_few')
+            return cons, info
+        tm = float(np.median(tys))
+        bm = float(np.median(bys))
+        hm = bm - tm
+        if cap is not None and hm > cap:
+            hm = cap
+            info['capped'] = True
+            info['cap'] = round(cap, 1)
+            bm = tm + hm
+        info.update(h=round(hm, 1), y1=round(tm, 1), y2=round(bm, 1),
+                    mode='volume_median')
+        if not (HF_PH_RANGE[0] * H <= hm <= HF_PH_RANGE[1] * H):
+            info['reason'] = 'fallback_out_of_range'
+            return cons, info
+        info['used'] = True
+        info['dh'] = round(hm - ch0, 1)
+        return [cons[0], tm, cons[2], tm + hm], info
+
+    if not box:
+        info['reason'] = 'no_page_with_both'
+        return _fallback()
+    best, bn = None, -1
+    for k in box:
+        tot = set()
+        for dk in (-1, 0, 1):
+            tot |= box.get(k + dk, set())
+        if len(tot) > bn:
+            bn, best = len(tot), k
+    info['peak_h'] = round(best * HF_PH_BIN, 1)
+    info['peak_pages'] = bn
+    if bn < HF_PH_MIN_N:
+        # 峰不够强时不再整段丢弃：同页跨距仍是唯一直接证据，改用全部同页
+        # 样本的中位（受 HF_PH_RANGE 过滤保护），而不是退回混批统计。
+        info['weak_peak'] = True
+        sel = list(spans)
+    else:
+        sel = [(a, b, d) for a, b, d in spans
+               if abs(d - best * HF_PH_BIN) <= 1.5 * HF_PH_BIN] or list(spans)
+    hmed = float(np.median([d for _, _, d in sel]))
+    tmed = float(np.median([a for a, _, _ in sel]))
+    bmed = float(np.median([b for _, b, _ in sel]))
+    info.update(h=round(hmed, 1), y1=round(tmed, 1), y2=round(bmed, 1),
+                n_sel=len(sel))
+    if not (HF_PH_RANGE[0] * H <= hmed <= HF_PH_RANGE[1] * H):
+        info['reason'] = 'span_out_of_range'
+        return _fallback()
+    info['mode'] = 'same_page_span'
+    out = [cons[0], tmed, cons[2], tmed + hmed]
+    info['used'] = True
+    info['dh'] = round(hmed - ch0, 1)
+    return out, info
+
+
+def hf_refine_consensus_corner(cons, records):
+    """用「页眉下方 / 页脚上方的框线交点（角）」定位共识框 —— 只改位置，不改尺寸。
+
+    卷级统一定位，作为逐页角点定位的基线。规则见方案 §4.7.2。
+
+    返回 (新共识, info)。info['mode'] ∈
+      'header_corner' / 'footer_corner_L' / 'footer_corner_R' / 'none'。
+    """
+    W = max(1, int(np.median([r['w'] for r in records if r.get('w')])))
+    H = max(1, int(np.median([r['h'] for r in records if r.get('h')])))
+    cw = cons[2] - cons[0]
+    ch = cons[3] - cons[1]
+    tolx = max(4.0, HF_CORNER_TOL * W)
+    toly = max(4.0, HF_CORNER_TOL * H)
+    capx = HF_CORNER_CAP * W
+    capy = HF_CORNER_CAP * H
+    n_pages = max(1, len(records))
+    need = max(HF_CORNER_MIN_N, int(HF_CORNER_RATIO * n_pages))
+
+    def _header_bottom(r):
+        hb = r.get('hf_header')
+        if not hb or not hb.get('box'):
+            return None
+        s = r.get('hf_s', HF_IW / float(W))
+        return hb['box'][3] / s
+
+    def _footer_top(r):
+        fb = r.get('hf_footer')
+        if not fb or not fb.get('box'):
+            return None
+        s = r.get('hf_s', HF_IW / float(W))
+        return H * (1.0 - HF_BOTR) + fb['box'][1] / s
+
+    # 全书统一基准：页眉底边 / 页脚顶边的中位数。
+    # 关键——不能按页各自为政（页眉常只命中奇页，未命中页若放开下界会把
+    # 候选拖到页面最顶端，统计被严重污染，框反而往上跑）。所有页共用同一条
+    # 下界 / 上界，才谈得上「全书一套框」的对齐。
+    hbs = [v for v in (_header_bottom(r) for r in records) if v is not None]
+    fts = [v for v in (_footer_top(r) for r in records) if v is not None]
+    hb_med = float(np.median(hbs)) if hbs else None
+    ft_med = float(np.median(fts)) if fts else None
+
+    def _pick_stable(vals, target, tol, mode='nearest'):
+        """在一维候选里取稳定簇中位数。
+        mode: nearest = 离 target 最近；low = 最小（最靠上）；high = 最大（最靠下）。
+        """
+        if len(vals) < need:
+            return None, 0
+        clusters = _cluster_sorted(vals, tol)
+        sig = [c for c in clusters if len(c) >= need]
+        if not sig:
+            return None, 0
+        meds = [float(np.median(c)) for c in sig]
+        if mode == 'low':
+            i = int(np.argmin(meds))
+        elif mode == 'high':
+            i = int(np.argmax(meds))
+        else:
+            i = int(np.argmin([abs(m - target) for m in meds]))
+        return meds[i], len(sig[i])
+
+    # ---- 收集候选角点 ----
+    tl_pts, bt_pts = [], []     # 左上角候选 / 下角候选
+    for r in records:
+        bands = r.get('hf_bands') or []
+        s = r.get('hf_s', HF_IW / float(W))
+        rH = r.get('h') or H
+        for nm, y0, segs in bands:
+            if nm == 'near_header' and hb_med is not None:
+                # 页眉下方：下界 = 全书页眉底边中位数，向上再放 SPAN 高的搜索窗
+                tl_pts += hf_band_corners(segs, y0, s,
+                                          y_lo=hb_med,
+                                          y_hi=hb_med + HF_CORNER_SPAN * rH)
+            elif nm == 'near_footer' and ft_med is not None:
+                # 页脚上方：上界 = 全书页脚顶边中位数，向下再放 SPAN 高的搜索窗
+                bt_pts += hf_band_corners(segs, y0, s,
+                                          y_lo=ft_med - HF_CORNER_SPAN * rH,
+                                          y_hi=ft_med)
+
+    info = {'mode': 'none', 'tl': None, 'bt': None, 'side': None,
+            'need': need, 'n_tl': len(tl_pts), 'n_bt': len(bt_pts),
+            'hb_med': round(hb_med, 1) if hb_med is not None else None,
+            'ft_med': round(ft_med, 1) if ft_med is not None else None}
+
+    # ---- ① 页眉下方角点 → 左上角 ----
+    tl = None
+    if tl_pts:
+        # y 取页眉下方最近的一簇（框顶边紧贴页眉下方第一条框线）
+        my, ny = _pick_stable([p[1] for p in tl_pts], cons[1], toly, 'low')
+        # x 取离原共识左边界最近的稳定簇（框左边压在左边界垂线上）
+        mx, nx = _pick_stable([p[0] for p in tl_pts], cons[0], tolx, 'nearest')
+        if mx is not None and my is not None:
+            tl = (mx, my)
+            info['tl'] = [round(mx, 1), round(my, 1), nx, ny]
+
+    # ---- ② 页脚上方角点 → 左下角 / 右下角 ----
+    bt = None
+    if bt_pts:
+        # y 取页脚上方最近的一簇（框下边紧贴页码上方那条框线）
+        my, ny = _pick_stable([p[1] for p in bt_pts], cons[3], toly, 'high')
+        xs = [p[0] for p in bt_pts]
+        # 左右判定：候选 x 的整体中位离原框哪条竖边更近
+        med_x = float(np.median(xs))
+        side = 'L' if abs(med_x - cons[0]) <= abs(med_x - cons[2]) else 'R'
+        mx, nx = _pick_stable(xs, cons[0] if side == 'L' else cons[2],
+                              tolx, 'nearest')
+        if my is not None:
+            bx = mx if mx is not None else med_x
+            bt = (bx, my, side)
+            info['bt'] = [round(bx, 1), round(my, 1), nx, ny]
+            info['side'] = side
+
+    # ---- ③ 定位：尺寸严格保持 (cw, ch)，只平移 (x1, y1) ----
+    # 注意：不做「画面居中」fallback——两个角都找不到时保持原位置不动。
+    out = list(cons)
+    if tl is not None:
+        dx = max(-capx, min(capx, tl[0] - cons[0]))
+        dy = max(-capy, min(capy, tl[1] - cons[1]))
+        out = [cons[0] + dx, cons[1] + dy,
+               cons[0] + dx + cw, cons[1] + dy + ch]
+        info['mode'] = 'header_corner'
+        info['shift'] = [round(dx, 1), round(dy, 1)]
+    elif bt is not None:
+        bx, by, side = bt
+        # 下角对齐：左下角 → x1 = bx；右下角 → x2 = bx ⇒ x1 = bx - cw
+        nx1 = bx if side == 'L' else bx - cw
+        ny1 = by - ch
+        dx = max(-capx, min(capx, nx1 - cons[0]))
+        dy = max(-capy, min(capy, ny1 - cons[1]))
+        out = [cons[0] + dx, cons[1] + dy,
+               cons[0] + dx + cw, cons[1] + dy + ch]
+        info['mode'] = 'footer_corner_' + side
+        info['shift'] = [round(dx, 1), round(dy, 1)]
+    return out, info
+
+
+def hf_page_corner_target(r, cw, ch, W, H):
+    """【逐页】定位：返回本页框的左上角 (x1, y1)；None = 本页不参与角点定位。
+
+    尺寸 (cw, ch) 由全书统一给定且严格不变，本函数只定位置。
+    对齐优先级：有页眉 / 页脚时必须以其基准线为准，都没有才回退贴分镜框边；
+    x 的左右归属由页号奇偶（hf_side）决定。完整规则见方案 §4.7.2 / §4.7.6。
+
+    返回 (x1, y1) 里任一轴可为 None，含义是【该轴保持调用方的贴边结果】。
+    """
+    rW = r.get('w') or W
+    side = r.get('hf_side') or ('L' if (r.get('page') or 1) % 2 else 'R')
+    bl = r.get('hf_base')
+    if bl is None:
+        bl = hf_page_baselines(r, W, H)
+    top, bot = bl.get('top'), bl.get('bot')
+    if not top and not bot:
+        return None, None
+
+    # ---- y1：两端都有 → 取两估计的均值；分歧过大时以【页脚】为准 ----
+    rH = r.get('h') or H
+    if top and bot:
+        t_est, b_est = top[0], bot[0] - ch
+        if abs(t_est - b_est) <= HF_PC_BOTH_TOL * rH:
+            ny1, ykind = 0.5 * (t_est + b_est), 'both'
+        else:
+            ny1, ykind = b_est, 'footer'
+    elif top:
+        ny1, ykind = top[0], 'header'
+    else:
+        ny1, ykind = bot[0] - ch, 'footer'
+
+    # ---- x1：取外侧竖线证据，页脚优先（页脚在页面角上，更贴版心外缘）----
+    xs = None
+    xkind = ''
+    if bot and bot[1] is not None:
+        xs, xkind = bot[1], 'F'
+    elif top and top[1] is not None:
+        xs, xkind = top[1], 'H'
+
+    nx1 = None
+    if xs is not None:
+        # 外侧 = 离书脊一侧。奇页(L) → 该竖线就是框左边；
+        # 偶页(R) → 该竖线是框右边 ⇒ x1 = x − 框宽。
+        nx1 = xs if side == 'L' else xs - cw
+
+    kind = ykind + ('_' + side + xkind if nx1 is not None else '_hl')
+    return (nx1, ny1), kind
 
 
 # ---------------- 主流程 ----------------
@@ -1375,7 +2055,7 @@ def gui_main_dialog():
         log('无法启动 GUI（tkinter 不可用？）：%s' % e)
         return None
 
-    version = '1.0'
+    version = '1.2'
     root = tk.Tk()
     root.title('扫描版心检测 %s' % version)
     root.geometry('820x620')
@@ -1451,7 +2131,9 @@ def gui_main_dialog():
     btn_ok = tk.Button(frm_btn, text='确定', width=10)
     btn_ok.pack(side='right')
 
-    state = {'running': False, 'done': False, 'exit_code': 0, 'closed': False}
+    # runs = 已完成的运行次数（>0 表示至少跑过一次，退出时按成功返回）
+    state = {'running': False, 'done': False, 'exit_code': 0,
+             'closed': False, 'runs': 0}
 
     def append_log(msg):
         if state['closed']:
@@ -1510,7 +2192,8 @@ def gui_main_dialog():
 
         sys.stdout = _StdoutProxy(gui_buf, real_stdout)
         try:
-            _run_detection(img_dir, hf_on, make_debug, gui_mode=True)
+            _run_detection(img_dir, hf_on, make_debug, gui_mode=True,
+                           tk_mode=True)
             state['exit_code'] = 0
         except SystemExit as e:
             state['exit_code'] = int(e.code) if isinstance(e.code, int) else 1
@@ -1523,23 +2206,25 @@ def gui_main_dialog():
             sys.stdout = real_stdout
             state['running'] = False
             state['done'] = True
+            state['runs'] += 1
             if not state['closed']:
                 root.after(0, _on_done)
 
     def _on_done():
-        btn_ok.config(text='关闭', state='normal')
-        btn_cancel.config(state='disabled')
+        # 恢复成「可再次运行」状态：确定 = 再次检测，取消 = 关闭窗口。
+        # 旧版把确定改成「关闭」并禁用取消，导致跑完一次后无法二次生成。
+        state['done'] = False
+        btn_ok.config(text='确定', state='normal')
+        btn_cancel.config(text='关闭', state='normal')
+        _append_now('—— 本次检测结束，可修改参数后再次点「确定」运行 ——')
         messagebox.showinfo(
             '完成',
-            '检测完成。日志见上方，「关闭」结束。',
+            '检测完成（退出码 %d）。'% state['exit_code'],
             parent=root)
 
     def on_ok():
         if state['running']:
             messagebox.showwarning('提示', '正在运行，请稍候。', parent=root)
-            return
-        if state['done']:
-            root.destroy()
             return
         d = path_var.get().strip()
         if not d or not os.path.isdir(d):
@@ -1548,6 +2233,10 @@ def gui_main_dialog():
                 '请选择一个有效的文件夹（包含扫描图片）。',
                 parent=root)
             return
+        # 第二次及以后运行：先加一条分隔线，日志不清空便于对比两次结果
+        if state['runs'] > 0:
+            _append_now('\n' + '=' * 60)
+            _append_now('第 %d 次运行' % (state['runs'] + 1))
         btn_ok.config(state='disabled')
         btn_cancel.config(state='disabled')
         threading.Thread(
@@ -1570,8 +2259,10 @@ def gui_main_dialog():
     root.protocol('WM_DELETE_WINDOW', on_close)
 
     root.mainloop()
-    if not state['done'] and state['exit_code'] == 0:
-        return None  # 用户取消
+    # 判据用 runs（已完成的运行次数）而非 done —— done 在 _on_done 里被复位成
+    # False 以便二次运行，若沿用它会把「已成功跑过」误判成「用户取消」。
+    if state['runs'] == 0:
+        return None  # 用户一次都没跑就关掉 = 取消
     return state['exit_code']
 
 
@@ -1619,16 +2310,20 @@ def main():
     _run_detection(img_dir, hf_on, make_debug, gui_mode=False)
 
 
-def _run_detection(img_dir, hf_on, make_debug, gui_mode):
+def _run_detection(img_dir, hf_on, make_debug, gui_mode, tk_mode=False):
     """执行版心检测 + (可选) 页眉/页脚检测，落盘 hanmen.json。
-    拆分自 main() 以便 GUI / CLI 复用同一套逻辑。"""
+    拆分自 main() 以便 GUI / CLI 复用同一套逻辑。
+
+    tk_mode=True 表示由 Tkinter 后台线程调用，此时不得调 pause_if_gui()
+    （input() 会在无控制台的窗口进程里永久阻塞）。
+    """
     files = sorted(
         f for f in os.listdir(img_dir)
         if f.lower().endswith(EXTS) and os.path.isfile(os.path.join(img_dir, f))
     )
     if not files:
         log('目录中没有找到支持的图片文件: ' + img_dir)
-        if gui_mode:
+        if gui_mode and not tk_mode:
             pause_if_gui()
         sys.exit(1)
 
@@ -1747,23 +2442,35 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
             log('页眉页脚检测：可用页面不足，跳过。')
             hf_info = {'enabled': False, 'reason': 'no_valid_page'}
         else:
+            # ⓪ 宽度校准：成对竖线间距众数定宽，必须在 x 修正之前（§4.7.1）
+            consensus, pw = hf_calib_consensus_width(consensus, hf_recs)
+            if pw.get('used'):
+                log('共识宽校准: %.0f → %.0f (%+.0f px)  峰宽=%.0f 支持 %d 页 / 对数 %d'
+                    % (pw['w0'], pw['w'], pw['dw'], pw['peak_w'],
+                       pw['peak_pages'], pw['n_sel']))
+                log('  配对左右边: x1=%.0f x2=%.0f' % (pw['x1'], pw['x2']))
+            else:
+                log('共识宽校准: 未采信（%s，峰宽=%s 支持 %s 页，原宽 %.0f）'
+                    % (pw.get('reason'), pw.get('peak_w'),
+                       pw.get('peak_pages'), pw['w0']))
+
             # ① 共识框左右边紧贴页眉/页脚带的垂直边线（全书仍共用同一个框）
             base_x = [consensus[0], consensus[2]]
-            consensus, moved, cnt = hf_refine_consensus_x(consensus, hf_recs)
+            consensus, moved_x, cnt_x = hf_refine_consensus_x(
+                consensus, hf_recs, lock_width=bool(pw.get('used')))
             log('共识竖线修正: x1 %+.0f px (样本 %d)  x2 %+.0f px (样本 %d)  有效页 %d'
-                % (moved[0], cnt[0], moved[1], cnt[1], cnt[2]))
+                % (moved_x[0], cnt_x[0], moved_x[1], cnt_x[1], cnt_x[2]))
             log('修正后共识: x1=%.0f x2=%.0f  宽=%.0f (原 %.0f)'
                 % (consensus[0], consensus[2],
                    consensus[2] - consensus[0], base_x[1] - base_x[0]))
 
-            # ② 页眉
+            # ② 页眉 / 页脚检测（必须先做，y 修正需要它们的命中结果）
             log('页眉检测中...')
             hdr = hf_header_volume(hf_recs)
             log('  种子 %d 页，命中 %s 页（奇 %s / 偶 %s）'
                 % (hdr.get('n_seed', 0), hdr.get('hits', 0),
                    hdr.get('odd', 0), hdr.get('even', 0)))
 
-            # ③ 页脚
             log('页脚检测中...')
             ftr = hf_footer_volume(hf_recs)
             log('  范式 %s，命中 %d 页（A 可用=%s 离散=%.3f 峰票比=%.2f）'
@@ -1771,9 +2478,83 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
                    ftr.get('a_usable'), ftr.get('a_spread', 0.0),
                    ftr.get('a_ratio', 0.0)))
 
+            # ③ 逐页基准线（页眉下方 / 页脚上方）—— 高度校准与逐页对齐共用同一份证据
+            _bW = max(1, int(np.median([r['w'] for r in hf_recs if r.get('w')])))
+            _bH = max(1, int(np.median([r['h'] for r in hf_recs if r.get('h')])))
+            n_both = 0
+            for r in hf_recs:
+                r['hf_base'] = hf_page_baselines(r, _bW, _bH)
+                if r['hf_base'].get('top') and r['hf_base'].get('bot'):
+                    n_both += 1
+            log('逐页基准线: 有上基准 %d 页，有下基准 %d 页，两者都有 %d 页'
+                % (sum(1 for r in hf_recs if r['hf_base'].get('top')),
+                   sum(1 for r in hf_recs if r['hf_base'].get('bot')), n_both))
+            n_fix, off_med = hf_fix_ftop_baselines(hf_recs, _bH)
+            if n_fix:
+                log('  页脚顶边兜底 %d 页，用有线页中位偏移 %+.0f px 补齐'
+                    % (n_fix, off_med))
+
+            # ④ 高度校准：以同页净跨距为准，必须在 y 修正之前（§4.7.4）
+            base_h0 = consensus[3] - consensus[1]
+            consensus, ph = hf_calib_consensus_height(consensus, hf_recs)
+            if ph.get('used'):
+                log('共识高校准: %.0f → %.0f (%+.0f px)  依据=%s 峰高=%s 支持 %s 页'
+                    % (ph['h0'], ph['h'], ph['dh'],
+                       ph.get('mode', 'same_page_span'),
+                       ph.get('peak_h'), ph.get('n_sel', ph.get('n_top'))))
+                log('  配对上下边: y1=%.0f y2=%.0f  (双端页 %d，上基准 %s 页，下基准 %s 页)'
+                    % (ph['y1'], ph['y2'], ph.get('n_both', 0),
+                       ph.get('n_top', '-'), ph.get('n_bot', '-')))
+            else:
+                log('共识高校准: 未采信（%s，峰高=%s 支持 %s 页，双端页 %d，原高 %.0f）'
+                    % (ph.get('reason'), ph.get('peak_h'), ph.get('peak_pages'),
+                       ph.get('n_both', 0), base_h0))
+
+            # ⑤ 共识框上下边位于页眉下方 / 页脚上方；高度已采信时跳过（§4.7.4）
+            base_y = [consensus[1], consensus[3]]
+            if ph.get('used'):
+                moved_y, cnt_y = [0.0, 0.0], (0, 0)
+                log('共识横线修正: 跳过（高度已由同页净跨距锁定）')
+            else:
+                consensus, moved_y, cnt_y = hf_refine_consensus_y(consensus, hf_recs)
+                log('共识横线修正: y1 %+.0f px (页眉样本 %d)  y2 %+.0f px (页脚样本 %d)'
+                    % (moved_y[0], cnt_y[0], moved_y[1], cnt_y[1]))
+            log('修正后共识: y1=%.0f y2=%.0f  高=%.0f (原 %.0f)'
+                % (consensus[1], consensus[3],
+                   consensus[3] - consensus[1], base_y[1] - base_y[0]))
+
+
+            # ④ 角点定位：共识框左上角贴「页眉下方的框线交点」，
+            #    否则下角贴「页脚上方的框线交点」。只平移，尺寸严格不变。
+            base_c = [consensus[0], consensus[1]]
+            consensus, corner = hf_refine_consensus_corner(consensus, hf_recs)
+            if corner.get('mode') == 'header_corner':
+                log('共识角点定位: 左上角贴页眉下方交点 → (%.0f, %.0f)  样本 x%d/y%d  平移 %+.0f,%+.0f px'
+                    % (corner['tl'][0], corner['tl'][1], corner['tl'][2],
+                       corner['tl'][3], corner['shift'][0], corner['shift'][1]))
+            elif corner.get('mode', '').startswith('footer_corner'):
+                log('共识角点定位: 下角(%s)贴页脚上方交点 → (%.0f, %.0f)  样本 x%d/y%d  平移 %+.0f,%+.0f px'
+                    % (corner['side'], corner['bt'][0], corner['bt'][1],
+                       corner['bt'][2], corner['bt'][3],
+                       corner['shift'][0], corner['shift'][1]))
+            else:
+                log('共识角点定位: 未找到页眉/页脚交点（候选 上%d 下%d，需 %d 页），保持原位'
+                    % (corner.get('n_tl', 0), corner.get('n_bt', 0),
+                       corner.get('need', 0)))
+            log('  基准: 页眉底边中位=%s  页脚顶边中位=%s'
+                % (corner.get('hb_med'), corner.get('ft_med')))
+            log('角点定位后: x1=%.0f y1=%.0f  尺寸 %.0f×%.0f (保持不变)'
+                % (consensus[0], consensus[1],
+                   consensus[2] - consensus[0], consensus[3] - consensus[1]))
+
             hf_info = {'enabled': True,
-                       'consensus_x_shift': [round(moved[0], 1), round(moved[1], 1)],
-                       'consensus_x_samples': list(cnt),
+                       'width_calib': pw,
+                       'height_calib': ph,
+                       'consensus_x_shift': [round(moved_x[0], 1), round(moved_x[1], 1)],
+                       'consensus_x_samples': list(cnt_x),
+                       'consensus_y_shift': [round(moved_y[0], 1), round(moved_y[1], 1)],
+                       'consensus_y_samples': list(cnt_y),
+                       'corner': corner,
                        'header': hdr, 'footer': ftr}
             # 页眉模板匹配已完成，释放顶部墨迹带
             for r in hf_recs:
@@ -1783,6 +2564,7 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
     pages_out = {}
     counts = {'ok': 0, 'fallback_consensus': 0, 'manual': 0}
     manual_list = []
+    corner_stat = {}        # 逐页角点对齐命中统计 {模式: 页数}
 
     cw = consensus[2] - consensus[0]
     ch = consensus[3] - consensus[1]
@@ -1796,6 +2578,7 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
         confidence = 0.0
         note = ''
         vc_hf = None
+        corner_mode, corner_pt = None, None
 
         if r['status_raw'] == 'manual' or consensus is None:
             status = 'manual'
@@ -1816,6 +2599,33 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
                          int(round(consensus[1] + dy)),
                          int(round(consensus[2] + dx)),
                          int(round(consensus[3] + dy))]
+
+            # ---- 逐页角点对齐（B 模式核心）----
+            # 全书统一只用来定尺寸 (cw, ch)；位置【每一页独立】对齐：
+            # 有页眉 → 左上角贴页眉框右下角正下方的交点；只有页脚 → 下角贴
+            # 页脚框上方的交点；都没有 → 保持上面算出的框线贴边 / 居中结果。
+            corner_mode, corner_pt = None, None
+            if hf_on and r.get('hf_ok'):
+                tgt, cmode = hf_page_corner_target(r, cw, ch, W, H)
+                if tgt is not None:
+                    bx1 = consensus[0] + dx
+                    by1 = consensus[1] + dy
+                    # sanity cap：只允许相对「常规贴边结果」再平移有限量，
+                    # 防止选到页面另一侧的伪交点造成灾难性漂移
+                    capx = HF_CORNER_CAP * (W or 1)
+                    capy = HF_CORNER_CAP * (H or 1)
+                    # tgt 的任一轴可能是 None，表示该轴保持常规贴边结果不动
+                    # （横线降级只给 y，硬套横线端点当 x 会偏移数百 px）
+                    nx1, ny1 = bx1, by1
+                    if tgt[0] is not None:
+                        nx1 = bx1 + max(-capx, min(capx, tgt[0] - bx1))
+                        mx = 'corner'
+                    if tgt[1] is not None:
+                        ny1 = by1 + max(-capy, min(capy, tgt[1] - by1))
+                        my = 'corner'
+                    final_abs = [int(round(nx1)), int(round(ny1)),
+                                 int(round(nx1 + cw)), int(round(ny1 + ch))]
+                    corner_mode, corner_pt = cmode, (nx1, ny1)
             # 边界 clamp：HF 修正后共识可能离页面边缘很近，per-page 贴边可能
             # 把框推出页面。尺寸恒定优先，x1/y1 至少 0，x2/y2 最多 W/H。
             cw_eff = final_abs[2] - final_abs[0]
@@ -1832,8 +2642,9 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
             if final_abs[3] > H:
                 final_abs[3] = H
                 final_abs[1] = H - ch_eff
-            pos_note = 'x=%s,y=%s,shift=%.0f,%.0f' % (mx, my, dx, dy)
-            mode_rank = {'snap': 2, 'center': 2, 'edge': 1, 'none': 0}
+            pos_note = 'x=%s,y=%s,shift=%.0f,%.0f' % (
+                mx, my, final_abs[0] - consensus[0], final_abs[1] - consensus[1])
+            mode_rank = {'corner': 3, 'snap': 2, 'center': 2, 'edge': 1, 'none': 0}
             n_good = mode_rank.get(mx, 0) + mode_rank.get(my, 0)
 
             if r['edges_abs'] is not None:
@@ -1858,6 +2669,8 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
                 note = 'edges_missing(%s)' % pos_note
 
         counts[status] += 1
+        if corner_mode:
+            corner_stat[corner_mode] = corner_stat.get(corner_mode, 0) + 1
         if status == 'manual':
             manual_list.append('%s(%s)' % (name, r.get('reason', '')))
         elif status == 'fallback_consensus':
@@ -1914,6 +2727,12 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
                                  [int(final_abs[2]),
                                   'xsnap_hf' if vc_hf else 'xsnap']]
                 hfe['snap_mode'] = [mx, my]
+            if corner_mode:
+                # 逐页角点对齐的模式与实际落点，便于按页排查对齐依据
+                hfe['corner_mode'] = corner_mode
+                if corner_pt:
+                    hfe['corner_pt'] = [int(round(corner_pt[0])),
+                                        int(round(corner_pt[1]))]
             entry['hf'] = hfe
         pages_out[name] = entry
 
@@ -1962,6 +2781,42 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
                     cv2.rectangle(vis, (int(b[0] * kx), int(oy + b[1] * ky)),
                                   (int(b[2] * kx), int(oy + b[3] * ky)),
                                   (200, 0, 200), 2)
+                # 角点：青色小十字=本页候选交点，亮青大十字=全书选中的定位角
+                # （用于肉眼核查共识框角是否真的压在框线交点上）
+                cinfo = (hf_info or {}).get('corner') if hf_on else None
+                if cinfo:
+                    hbm = cinfo.get('hb_med')
+                    ftm = cinfo.get('ft_med')
+                    sx2 = sw / float(W)
+                    sy2 = sh / float(H)
+                    for nm, by0, segs in (r.get('hf_bands') or []):
+                        if nm == 'near_header' and hbm is not None:
+                            pts = hf_band_corners(segs, by0, r['hf_s'],
+                                                  y_lo=hbm,
+                                                  y_hi=hbm + HF_CORNER_SPAN * H)
+                        elif nm == 'near_footer' and ftm is not None:
+                            pts = hf_band_corners(segs, by0, r['hf_s'],
+                                                  y_lo=ftm - HF_CORNER_SPAN * H,
+                                                  y_hi=ftm)
+                        else:
+                            pts = []
+                        for (cx, cy, st) in pts:
+                            cv2.drawMarker(vis, (int(cx * sx2), int(cy * sy2)),
+                                           (255, 255, 0),
+                                           cv2.MARKER_CROSS, 11, 2)
+                    # 大十字：本页【实际选中】的定位角。
+                    # 逐页对齐命中时用本页的 corner_pt（必然落在上面的小十字之一上），
+                    # 否则退回全书统一的角，供肉眼对比。
+                    sel_pt = corner_pt
+                    if sel_pt is None:
+                        sel = cinfo.get('tl') or cinfo.get('bt')
+                        sel_pt = (sel[0], sel[1]) if sel else None
+                    if sel_pt:
+                        cv2.drawMarker(vis, (int(sel_pt[0] * sx2),
+                                             int(sel_pt[1] * sy2)),
+                                       (0, 255, 255),
+                                       cv2.MARKER_CROSS, 27, 3)
+
             cv2.putText(vis, status, (20, 60), cv2.FONT_HERSHEY_SIMPLEX,
                         1.6, color, 3)
             outp = os.path.join(debug_dir, os.path.splitext(name)[0] + '_debug.png')
@@ -2008,6 +2863,13 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
     log('')
     log('检测完成：共 %d 页 | ok=%d | 共识兜底=%d | 需手动=%d'
         % (len(records), counts['ok'], counts['fallback_consensus'], counts['manual']))
+    if corner_stat:
+        tot = sum(corner_stat.values())
+        log('逐页角点对齐：%d/%d 页命中（%s）'
+            % (tot, len(records),
+               '  '.join('%s=%d' % (k, v) for k, v in sorted(corner_stat.items()))))
+    else:
+        log('逐页角点对齐：0 页命中（全部走框线贴边 / 居中）')
     if hf_info and hf_info.get('enabled'):
         log('页眉：命中 %d 页（奇 %d / 偶 %d）  模板 %s'
             % (hf_info['header'].get('hits', 0), hf_info['header'].get('odd', 0),
@@ -2027,7 +2889,7 @@ def _run_detection(img_dir, hf_on, make_debug, gui_mode):
     if make_debug:
         log('调试叠加图目录: ' + debug_dir)
 
-    if gui_mode:
+    if gui_mode and not tk_mode:
         pause_if_gui()
 
 
