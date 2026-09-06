@@ -11,7 +11,7 @@
  * 日志写入 JSON 同目录下的 hanmen_place_log.txt。
  */
 
-#include "../Library/KTUlib.jsx"
+#include "../../Library/KTUlib.jsx"
 
 // ---------------- 全局状态 ----------------
 var version = "v1.0";
