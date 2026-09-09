@@ -19,7 +19,7 @@ function main() {
         }
 
         // 根据用户选择的范围执行断句
-        var textFrames = getTextFrames(userOptions.range);
+        var textFrames = getTextFrames(userOptions.range, userOptions.skipLocked);
 
         if (textFrames.length === 0) {
             alert("未找到任何文本框。");
@@ -119,6 +119,10 @@ function showUI() {
     var entireDocumentRadio = rangeGroup.add("radiobutton", undefined, "文档中所有文本框");
     currentSelectionRadio.value = true; // 默认选中第一个选项
 
+    // 跳过锁定文本框选项
+    var skipLockedCheckbox = dialog.add("checkbox", undefined, "跳过锁定的文本框");
+    skipLockedCheckbox.value = true; // 默认勾选
+
     // 确定和取消按钮
     var buttonGroup = dialog.add("group");
     buttonGroup.alignment = "right";
@@ -138,7 +142,7 @@ function showUI() {
 
         return {
             range: range,
-
+            skipLocked: skipLockedCheckbox.value,
         };
     } else {
         return null;
@@ -146,7 +150,7 @@ function showUI() {
 }
 
 // 获取指定范围的文本框
-function getTextFrames(range) {
+function getTextFrames(range, skipLocked) {
     var textFrames = [];
     var doc = app.activeDocument;
 
@@ -177,7 +181,29 @@ function getTextFrames(range) {
         textFrames = normalPageTextFrames;
     }
 
+    // 跳过锁定的文本框（本体锁定或所在图层锁定）
+    if (skipLocked) {
+        var unlockedTextFrames = [];
+        for (var j = 0; j < textFrames.length; j++) {
+            if (!isTextFrameLocked(textFrames[j])) {
+                unlockedTextFrames.push(textFrames[j]);
+            }
+        }
+        textFrames = unlockedTextFrames;
+    }
+
     return textFrames;
+}
+
+// 判断文本框是否被锁定（本体锁定或所在图层锁定）
+function isTextFrameLocked(tf) {
+    try {
+        if (tf.locked) return true;
+        if (tf.itemLayer && tf.itemLayer.locked) return true;
+    } catch (e) {
+        // 访问属性出错时视为未锁定，继续处理
+    }
+    return false;
 }
 
 // 执行脚本
