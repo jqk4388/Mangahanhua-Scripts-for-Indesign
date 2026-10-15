@@ -20,9 +20,15 @@ if (app.documents.length === 0) {
     dlg.alignChildren = "left";
 
     // 图层选择
-    dlg.add("statictext", undefined, "选择图层：");
-    var layerDropdown = dlg.add("dropdownlist", undefined, layerNames);
+    var layerGroup = dlg.add("group");
+    layerGroup.orientation = "row";
+    layerGroup.add("statictext", undefined, "选择图层：");
+    var layerDropdown = layerGroup.add("dropdownlist", undefined, layerNames);
     layerDropdown.selection = 0;
+    var findHiddenCheckbox = layerGroup.add("checkbox", undefined, "查找隐藏");
+    findHiddenCheckbox.value = false;
+    var findLockedCheckbox = layerGroup.add("checkbox", undefined, "查找锁定");
+    findLockedCheckbox.value = false;
 
     // 查找内容
     dlg.add("statictext", undefined, "查找内容：");
@@ -90,6 +96,42 @@ if (app.documents.length === 0) {
             }
         }
     }
+
+    // 获取对象样式（递归，含分组）
+    var objStyleNames = ["(无)"];
+    var objStyleObjs = [null];
+
+    function countObjStyles(styles, groupName) {
+        for (var i = 0; i < styles.length; i++) {
+            if (styles[i].constructor.name === "ObjectStyleGroup") {
+                var gName = styles[i].name;
+                countObjStyles(styles[i].objectStyles, gName);
+                countObjStyles(styles[i].objectStyleGroups, gName);
+            } else if (styles[i].constructor.name === "ObjectStyle") {
+                var name = styles[i].name;
+                var OStyle = styles[i];
+                var group = groupName && groupName !== "" ? groupName : "";
+                if (group !== "") {
+                    name = name + "(" + group + ")";
+                }
+                objStyleNames.push(name);
+                objStyleObjs.push(OStyle);
+            }
+        }
+    }
+
+    function loadObjectStyles() {
+        objStyleNames = ["(无)"];
+        objStyleObjs = [null];
+        countObjStyles(doc.objectStyles, "");
+        countObjStyles(doc.objectStyleGroups, "");
+        objStyleDropdown.removeAll();
+        for (var i = 0; i < objStyleNames.length; i++) {
+            objStyleDropdown.add("item", objStyleNames[i]);
+        }
+        objStyleDropdown.selection = 0;
+    }
+
     // 统计组外样式和组内样式
     countCharStyles(doc.characterStyles, "");
     countCharStyles(doc.characterStyleGroups, "");
@@ -124,6 +166,35 @@ if (app.documents.length === 0) {
         currentIndex = -1;
     };
 
+    // 对象查找格式分组（仅对象时显示）
+    var objFormatGroup = dlg.add("panel", undefined, "查找格式");
+    objFormatGroup.orientation = "column";
+    objFormatGroup.alignChildren = "left";
+    objFormatGroup.visible = false;
+
+    var enableObjFormatCheckbox = objFormatGroup.add("checkbox", undefined, "启用查找格式");
+    enableObjFormatCheckbox.value = false;
+
+    var objStyleGroup = objFormatGroup.add("group");
+    objStyleGroup.add("statictext", undefined, "对象样式：");
+    var objStyleDropdown = objStyleGroup.add("dropdownlist", undefined, ["(无)"]);
+    objStyleDropdown.selection = 0;
+    objStyleDropdown.enabled = false;
+
+    enableObjFormatCheckbox.onClick = function() {
+        var enabled = enableObjFormatCheckbox.value;
+        objStyleDropdown.enabled = enabled;
+        if (enabled) {
+            loadObjectStyles();
+        }
+        foundItems = [];
+        currentIndex = -1;
+    };
+    objStyleDropdown.onChange = function() {
+        foundItems = [];
+        currentIndex = -1;
+    };
+
     // 对象类型
     dlg.add("statictext", undefined, "对象类型：");
     var objectTypeDropdown = dlg.add("dropdownlist", undefined, [
@@ -154,6 +225,12 @@ if (app.documents.length === 0) {
     var exportBtn = btnGroup.add("button", undefined, "导出页面列表");
     var highlightBtn = btnGroup.add("button", undefined, "突出显示");
     var closeBtn = btnGroup.add("button", undefined, "关闭");
+
+    // 复位按钮（关闭按钮下方，右对齐）
+    var resetGroup = dlg.add("group");
+    resetGroup.orientation = "row";
+    resetGroup.alignment = "right";
+    var resetBtn = resetGroup.add("button", undefined, "复位");
 
     // 调试日志框，palette 内可靠输出
     dlg.add("statictext", undefined, "日志输出：");
@@ -191,6 +268,14 @@ if (app.documents.length === 0) {
         var charStyleObj = charStyleDropdown.selection ? charStyleObjs[charStyleDropdown.selection.index] : null;
         var paraStyleObj = paraStyleDropdown.selection ? paraStyleObjs[paraStyleDropdown.selection.index] : null;
 
+        // 对象查找格式相关
+        var enableObjFormat = enableObjFormatCheckbox.value;
+        var objStyleObj = objStyleDropdown.selection ? objStyleObjs[objStyleDropdown.selection.index] : null;
+
+        // 隐藏/锁定查找选项
+        var findHidden = findHiddenCheckbox.value;
+        var findLocked = findLockedCheckbox.value;
+
         var pages = [];
         var j, p;
         if (scope === "当前页面") {
@@ -207,6 +292,22 @@ if (app.documents.length === 0) {
             for (j = 0; j < pageItems.length; j++) {
                 var item = pageItems[j];
                 if (item.itemLayer && item.itemLayer.name === layerName) {
+                    // 隐藏过滤：未勾选“查找隐藏”时跳过隐藏对象（含所在图层被隐藏）
+                    if (!findHidden) {
+                        try {
+                            if (item.visible === false || item.itemLayer.visible === false) {
+                                continue;
+                            }
+                        } catch (e) {}
+                    }
+                    // 锁定过滤：未勾选“查找锁定”时跳过锁定对象（含所在图层被锁定）
+                    if (!findLocked) {
+                        try {
+                            if (item.locked === true || item.itemLayer.locked === true) {
+                                continue;
+                            }
+                        } catch (e) {}
+                    }
                     if (findType === "对象") {
                         if (
                             (objectType === "图框" && item.constructor.name === "Rectangle" && item.graphics.length > 0) ||
@@ -225,7 +326,18 @@ if (app.documents.length === 0) {
                             (objectType === "文本路径" && item.constructor.name === "TextPath") ||
                             (objectType === "注释" && item.constructor.name === "Note")
                         ) {
-                            foundItems.push(item);
+                            var passObjStyle = true;
+                            if (enableObjFormat && objStyleObj) {
+                                passObjStyle = false;
+                                try {
+                                    if (item.appliedObjectStyle === objStyleObj) {
+                                        passObjStyle = true;
+                                    }
+                                } catch (e) {}
+                            }
+                            if (passObjStyle) {
+                                foundItems.push(item);
+                            }
                         }
                     } else if (findType === "文本") {
                         if (item.constructor.name === "TextFrame" && item.contents !== "") {
@@ -414,11 +526,15 @@ if (app.documents.length === 0) {
         } else if (item.parentTextFrames && item.parentTextFrames.length > 0 && item.parentTextFrames[0].parentPage) {
             app.activeWindow.activePage = item.parentTextFrames[0].parentPage;
         }
-        if (item.hasOwnProperty("select")) {
-            item.select();
-        } else if (item.hasOwnProperty("characters")) {
-            // GREP结果为文本对象
-            app.select(item);
+        try {
+            if (item.hasOwnProperty("select")) {
+                item.select();
+            } else if (item.hasOwnProperty("characters")) {
+                // GREP结果为文本对象
+                app.select(item);
+            }
+        } catch (e) {
+            log("[查找] 选中失败（对象可能被隐藏或锁定）: " + e);
         }
         app.activeWindow.zoom(ZoomOptions.FIT_PAGE);
         // alert("第 " + (currentIndex + 1) + " 个，共 " + foundItems.length + " 个。");
@@ -473,6 +589,9 @@ if (app.documents.length === 0) {
         file.write("查找内容：" + findTypeDropdown.selection.text + "\r\n");
         if (findTypeDropdown.selection.text === "对象") {
             file.write("对象类型：" + objectTypeDropdown.selection.text + "\r\n");
+            if (enableObjFormatCheckbox.value) {
+                file.write("对象样式：" + objStyleDropdown.selection.text + "\r\n");
+            }
         } else {
             file.write("GREP表达式：" + grepInput.text + "\r\n");
             if (enableFormatCheckbox.value) {
@@ -561,48 +680,61 @@ if (app.documents.length === 0) {
         dlg.close();
     };
 
+    // 复位按钮：清除日志并重新查找
+    resetBtn.onClick = function() {
+        logBox.text = "";
+        doSearch();
+        log("[复位] 已清除日志并重新查找，匹配数量=" + foundItems.length);
+    };
+
     // 切换查找内容时，控制对象类型、GREP输入和查找格式可用性
     findTypeDropdown.onChange = function() {
         var isObj = (findTypeDropdown.selection.text === "对象");
         objectTypeDropdown.enabled = isObj;
         grepGroup.visible = !isObj;
         formatGroup.visible = !isObj;
-        // 选项变更时清空查找并重新查找
+        objFormatGroup.visible = isObj;
+        // 选项变更时清空查找结果（不再立即查找，点击查找下一个时才查找）
         foundItems = [];
         currentIndex = -1;
-        doSearch();
     };
     objectTypeDropdown.enabled = true;
     grepGroup.visible = false;
     formatGroup.visible = false;
+    objFormatGroup.visible = true;
 
-    // 其它下拉列表变更时也清空查找并重新查找
+    // 隐藏/锁定勾选变更时清空查找结果（点击查找下一个时才查找）
+    findHiddenCheckbox.onClick = function() {
+        foundItems = [];
+        currentIndex = -1;
+    };
+    findLockedCheckbox.onClick = function() {
+        foundItems = [];
+        currentIndex = -1;
+    };
+
+    // 其它下拉列表变更时也清空查找结果
     layerDropdown.onChange = function() {
         foundItems = [];
         currentIndex = -1;
-        doSearch();
     };
     objectTypeDropdown.onChange = function() {
         foundItems = [];
         currentIndex = -1;
-        doSearch();
     };
     scopeDropdown.onChange = function() {
         foundItems = [];
         currentIndex = -1;
-        doSearch();
     };
     directionDropdown.onChange = function() {
         foundItems = [];
         currentIndex = -1;
-        doSearch();
     };
 
-    // GREP输入变更时也清空查找并重新查找
+    // GREP输入变更时也清空查找结果
     grepInput.onChanging = function() {
         foundItems = [];
         currentIndex = -1;
-        doSearch();
     };
 
     dlg.center();
