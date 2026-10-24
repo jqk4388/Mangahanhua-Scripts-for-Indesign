@@ -53,49 +53,44 @@ DEFAULT_APIS = {
     "MiniMax": "https://api.minimaxi.com/v1/chat/completions",
     "OpenRouter": "https://openrouter.ai/api/v1/chat/completions",
     "Anthropic": "https://api.anthropic.com/v1",
-    "天翼云": "https://wishub-x6.ctyun.cn/v1",
+    "天翼云": "https://ai.ctaigw.cn/v1/chat/completions",
     "免费模型": "https://api.kilo.ai/api/gateway/chat/completions",
     "MiMo": "https://api.xiaomimimo.com/v1/chat/completions",
     "移动云": "https://zhenze-huhehaote.cmecloud.cn/v1/chat/completions",
-    "移动云(Coding)": "https://zhenze-huhehaote.cmecloud.cn/api/coding/v1/chat/completions",
+    "移动云(MoMa_TP)": "https://moma.cmecloud.cn/tokenplan-personal/v1/chat/completions",
     "联通云": "https://aigw-gzgy2.cucloud.cn:8443/v1/chat/completions",
 }
 
 # 默认模型列表
 DEFAULT_MODELS = {
-    "Ollama": ["deepseek-v4-flash", "deepseek-v4-pro"],
-    "OpenAI": ["gpt-4.1-2025-04-14", "gpt-5.4-nano-2026-03-17", "gpt-5.5"],
-    "Doubao": ["doubao-seed-2-0-mini-260428", "doubao-seed-evolving",
-               "doubao-seed-2-1-turbo-260628", "deepseek-v4-flash-ga-260731"],
-    "DeepSeek": ["deepseek-v4-flash", "deepseek-v4-pro"],
-    "Qwen": ["qwen3.6-flash", "deepseek-v4-flash-260731", "MiniMax/MiniMax-M2.7",
-             "glm-5.1", "qwen3.7-max"],
-    "Baidu": ["ernie-5.0", "deepseek-v4-flash", "ernie-5.1"],
-    "Tencent": ["hy3-preview", "deepseek-v4-flash", "glm-5.1", "glm-5-turbo"],
-    "Zhipu": ["glm-5-turbo", "glm-4.7-flash", "glm-4.6v-flash"],
-    "Gemini": ["gemini-3.1-flash-lite", "gemini-3.5-flash"],
+    "Ollama": ["deepseek-v4.1-flash", "glm-5.3-flash"],
+    "OpenAI": ["gpt-6-luna", "gpt-6.1-sol", "gpt-5.6-luna"],
+    "Doubao": ["doubao-seed-2-1-lite-260915", "doubao-seed-evolving",
+               "deepseek-v4-1-flash-economy-261017","glm-5-3-flash-260828", "kimi-k3-1-pro-261024"],
+    "DeepSeek": ["deepseek-flash", "deepseek-v4-pro"],
+    "Qwen": ["qwen3.8-flash", "deepseek-v4.1-flash-1017", "kimi/kimi-k3.1-pro-highspeed",
+             "MiniMax/MiniMax-M3.1-Flash", "qwen3.8-max"],
+    "Baidu": ["ernie-5.1", "deepseek-v4.1-flash-1017", "ernie-5.0"],
+    "Tencent": ["hy4-preview", "deepseek/deepseek-flash", "glm-5.3-flash"],
+    "Zhipu": ["glm-5.3-flash", "glm-5.3-flashx", "glm-5.3"],
+    "Gemini": ["gemini-4-argon", "gemini-3.8-flash"],
     "LM Studio": ["local-model"],
-    "MiniMax": ["MiniMax-M2.7", "MiniMax-M3"],
+    "MiniMax": ["MiniMax-M3.1-Flash", "MiniMax-M3"],
     "OpenRouter": ["openrouter/free"],
-    "Anthropic": ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7"],
-    "天翼云": ["DeepSeek-V4-Flash"],
+    "Anthropic": ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"],
+    "天翼云": ["deepseek-v4.1-flash-1017", "glm-5.3-flash"],
     "免费模型": [
-        "kilo-auto/free", "mimo-v2.5-free", "north-mini-code-free",
-        "nemotron-3-ultra-free", "deepseek-v4-flash-free", "openrouter/free",
+        "kilo-auto/free", "openrouter/free",
     ],
-    "MiMo": ["mimo-v2.5-pro", "mimo-v2-flash"],
-    "移动云": ["deepseek-v4-flash"],
-    "移动云(Coding)": ["deepseek-v4-flash"],
-    "联通云": ["DeepSeek-V4-Flash", "MiniMax-M2.5"],
+    "MiMo": ["mimo-v2.6-pro", "mimo-v2.6-flash"],
+    "移动云": ["minimax/minimax-m3.1-flash", "zhipu/glm-5.3-flash"],
+    "移动云(MoMa_TP)": ["Auto","Deepseek-V4-Flash"],
+    "联通云": ["aisp-auto-route", "deepseek-ai/DeepSeek-V4-Flash", "DeepSeek-V4-Flash"],
 }
 
 # 免费模型对应的 API 地址
 FREE_MODEL_API_URLS = {
     "kilo-auto/free": "https://api.kilo.ai/api/gateway/chat/completions",
-    "mimo-v2.5-free": "https://opencode.ai/zen/v1/chat/completions",
-    "north-mini-code-free": "https://opencode.ai/zen/v1/chat/completions",
-    "nemotron-3-ultra-free": "https://opencode.ai/zen/v1/chat/completions",
-    "deepseek-v4-flash-free": "https://opencode.ai/zen/v1/chat/completions",
     "openrouter/free": "https://openrouter.ai/api/v1/chat/completions",
 }
 DEFAULT_OPENROUTER_FREE_KEY = ""
@@ -120,7 +115,7 @@ MIN_SPLITTABLE_LEN = 8
 MAX_LINE_FAILURES = 5
 
 # 脚本版本号：每次更新提示词或配置字段时递增
-SCRIPT_VERSION = "2.1.0"
+SCRIPT_VERSION = "2.2.1"
 
 
 # ============================================================================
@@ -128,33 +123,69 @@ SCRIPT_VERSION = "2.1.0"
 # ============================================================================
 
 # 系统提示词（纯规则，不含示例）：
-SYSTEM_PROMPT = """你是中文漫画台词断句助手。把每行台词断成几个自然片段，片段之间用 <BR> 分隔。
+# 规则依据 1064 行龙珠人工断句语料统计得出：
+#   片段长度 2-8 字占 92%（中位数 5）；≤4 字行 0% 断句，6-8 字行 64-96% 断句，≥9 字 97% 断句；
+#   逗号后 95% 断、省略号后 90% 断、句中 ! 后 89% 断；破折号 — 前 0% 断、后 <10% 断。
+SYSTEM_PROMPT = """你是中文漫画台词断句助手。把每行台词断成适合漫画气泡排版的自然片段，片段之间用 <BR> 分隔。
 
 规则：
-1. 在逗号后、分句处、语气转换处断句；每段约 4-10 字，长短均衡。
-2. 绝对不改原文标点（? ! — 「」 …… 等原样保留），只插入 <BR>。
-3. 不拆散人名、地名、成语等固定词。
-4. 短句（5 字以下）无需断句，原样返回。
-5. 必须断句：超过 10 字且含逗号/分句的行，至少插入一个 <BR>。
-6. 一般在"的"字后断句，除非整句太短。"""
+1. 片段长度以 3-7 字为宜，最长不超过 10 字，长短搭配。
+2. 以下位置通常必须断开：
+   - 句中逗号"，"、句号"。"之后；
+   - 省略号"……"之后（口吃结巴也逐段断："你……<BR>你……"）；
+   - 句中"!/?"之后还有下文时（"那巴!<BR>看看身后!"）；
+   - 呼告、人名称谓之后（"悟饭，<BR>过来。"）。
+3. 以下位置不要断开：
+   - 破折号"—"前后都不断，让它紧贴前面的词（"弱点—尾巴……"）；
+   - 人名、固定词内部不断，但口吃的省略号/顿号除外（"饺……<BR>子……"、"爸、<BR>爸爸!"）；
+   - 顿号"、"后一般不断，除非表示口吃迟疑。
+4. 按行长决定是否断句：
+   - 4 字及以下：不断句，原样返回；
+   - 5 字：仅当含句中标点或呼告时断一次，否则不断；
+   - 6-8 字：一般在语义自然处断一次；
+   - 9 字及以上：通常都要断句，优先按规则 2 的标点位置断。
+5. 重复音节的喊叫、拟声语气词按 2-4 字一组拆开（"哈啊<BR>啊啊<BR>啊!"、"呜哦<BR>哦哦!"）。
+6. 章节标题在卷数与标题之间断开（"其二百一十七<BR>快啊!孙悟空"）；卷数后已有空格分隔的不用断。
+7. 可以在"的"字后断句，除非整句太短。
+8. 绝对不改原文标点与字符（? ! — 「」 …… 等全角半角都原样保留），只插入 <BR>；不要在行首或行尾加 <BR>。唯一的例外：原文中的半角/全角空格视为天然断点，可以直接把空格替换成 <BR>（替换后该空格不再保留，也不要空格与 <BR> 并存）。"""
 
 # 预设示例对话（多轮 few-shot，用作系统提示词后的上下文）
 # 每条为 (用户原文列表, 助手断句结果列表)
 FEWSHOT_EXAMPLES = [
     (
         [
-            "这就是传说中的石像鬼吧，我还是头一回见。",
-            "直子!多半是那家人自己收起来了吧——",
-            "……自从那东西来到家里之后，不好的事情就一直没断过。",
-            "古董商带过来的藏品当中正好有这个，我一眼看中了它，就买下来了。",
-            "嗯?",
+            "难……难道……",
+            "哈啊，哈啊。",
+            "那巴!看看身后!",
+            "居然还活着呢。",
+            "竟敢小看我们!",
+            "哈啊啊啊啊!",
+            "以那个小矮子来说，算是干得很不错了……",
+            "等我收拾完三只眼的浑蛋，接下来就轮到你们了!",
         ],
         [
-            "这就是<BR>传说中的<BR>石像鬼吧，<BR>我还是头一回见。",
-            "直子!<BR>多半是那家人<BR>自己收起来了吧——",
-            "……自从那东西<BR>来到家里之后，<BR>不好的事情<BR>就一直没断过。",
-            "古董商带过来的<BR>藏品当中正好有这个，<BR>我一眼看中了它，<BR>就买下来了。",
-            "嗯?",
+            "难……<BR>难道……",
+            "哈啊，<BR>哈啊。",
+            "那巴!<BR>看看身后!",
+            "居然<BR>还活着呢。",
+            "竟敢<BR>小看我们!",
+            "哈啊<BR>啊啊<BR>啊!",
+            "以那个<BR>小矮子来说，<BR>算是干得<BR>很不错了……",
+            "等我收拾完<BR>三只眼的浑蛋，<BR>接下来就<BR>轮到你们了!",
+        ],
+    ),
+    (
+        [
+            "你、你这小矮子!",
+            "然后由我找到空隙，抓住赛亚人的弱点—尾巴……",
+            "你要我怎么打发三个小时啊!之前在宇宙里睡了那么久，身体对战斗的渴望已经按捺不住了!",
+            "参考卡卡罗特以前的数据，这数字简直是天方夜谭……再加上这里的家伙能改变战斗力数值……也就是说，5000只是最低值……",
+        ],
+        [
+            "你、<BR>你这<BR>小矮子!",
+            "然后由我<BR>找到空隙，<BR>抓住赛亚人的<BR>弱点—尾巴……",
+            "你要我怎么<BR>打发三个小时啊!<BR>之前在宇宙里<BR>睡了那么久，<BR>身体对战斗的渴望<BR>已经按捺不住了!",
+            "参考卡卡罗特<BR>以前的数据，<BR>这数字简直是<BR>天方夜谭……<BR>再加上这里的家伙<BR>能改变<BR>战斗力数值……<BR>也就是说，<BR>5000只是最低值……",
         ],
     ),
 ]
@@ -226,6 +257,15 @@ def extract_br_positions(text):
     return positions
 
 
+def extract_br_positions_for_compare(text):
+    """提取用于评估对比的 <BR> 位置：先剔除所有空白字符再计算位置。
+
+    使"把空格替换为 <BR>"与"在空格前/后加 <BR> 但保留空格"被视为同一断点，
+    不判为错误。
+    """
+    return extract_br_positions(re.sub(r"\s+", "", text or ""))
+
+
 def apply_br_positions(original, positions):
     """在 original 的指定位置插入 <BR>。positions 为"在第 N 个字符之后"的列表（0 表示开头）。"""
     pos_set = set(positions)
@@ -275,7 +315,39 @@ def rebuild_with_original_punct(original, processed):
             orig_boundaries.add(0)
         elif (b - 1) in proc_to_orig:
             orig_boundaries.add(proc_to_orig[b - 1] + 1)
-    return apply_br_positions(original, orig_boundaries), True
+
+    # 空白吸收：原文中被模型删去、且与断点相邻的空格/全角空格不再还原，
+    # 视为被 <BR> 吸收（对应提示词规则"空格可直接替换成 <BR>"）。
+    # 按连续空白游程整体处理：游程 [i..j] 的任意端点或内部存在断点时，
+    # 该游程中未被模型保留的空白字符全部吸收。
+    matched_orig = set(proc_to_orig.values())
+    absorbed = set()
+    i, n = 0, len(original)
+    while i < n:
+        if not original[i].isspace():
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and original[j + 1].isspace():
+            j += 1
+        if any(b in orig_boundaries for b in range(i, j + 2)):
+            for k in range(i, j + 1):
+                if k not in matched_orig:
+                    absorbed.add(k)
+        i = j + 1
+    if not absorbed:
+        return apply_br_positions(original, orig_boundaries), True
+
+    result = []
+    if 0 in orig_boundaries:
+        result.append("<BR>")
+    for i, ch in enumerate(original):
+        if i not in absorbed:
+            result.append(ch)
+        # 即使该字符被吸收，其后的断点仍需照常插入
+        if (i + 1) in orig_boundaries:
+            result.append("<BR>")
+    return "".join(result), True
 
 
 # ============================================================================
@@ -601,8 +673,8 @@ class Evaluator:
             if text_eq:
                 text_match += 1
 
-            ai_pos = set(extract_br_positions(ai))
-            ref_pos = set(extract_br_positions(ref))
+            ai_pos = set(extract_br_positions_for_compare(ai))
+            ref_pos = set(extract_br_positions_for_compare(ref))
             pos_eq = (ai_pos == ref_pos)
             if text_eq and pos_eq:
                 exact_match += 1
@@ -814,7 +886,7 @@ class OpenAICompatProvider(LLMProvider):
             payload["thinking"] = {"type": "enabled" if self.think_mode else "disabled"}
         elif self.api_url_type in ("OpenAI", "Qwen", "Zhipu", "LM Studio",
                                     "MiniMax", "OpenRouter", "移动云",
-                                    "移动云(Coding)", "联通云"):
+                                    "移动云(MoMa_TP)", "联通云"):
             payload["enable_thinking"] = self.think_mode
         payload.update(self.extra_params)
 
@@ -1269,7 +1341,7 @@ PROVIDER_REGISTRY = {}
 def _register_providers():
     """注册各 api_type 对应的 Provider。"""
     openai_compat_types = ["OpenAI", "Qwen", "Zhipu", "LM Studio", "MiniMax",
-                          "OpenRouter", "移动云", "移动云(Coding)", "联通云",
+                          "OpenRouter", "移动云", "移动云(MoMa_TP)", "联通云",
                           "Doubao", "DeepSeek"]
     for t in openai_compat_types:
         PROVIDER_REGISTRY[t] = OpenAICompatProvider
