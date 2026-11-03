@@ -24,7 +24,7 @@ if (-not $OutputDir) { $OutputDir = Join-Path $root 'dist' }
 
 $pkgName = "Mangahanhua-Scripts-for-Indesign_$Tag"
 $zipPath = Join-Path $OutputDir "$pkgName.zip"
-$stageRoot = Join-Path $env:TEMP "release_$Tag"
+$stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) "release_$Tag"
 
 # 不参与分发的路径（正则匹配）
 $excludePatterns = @(
