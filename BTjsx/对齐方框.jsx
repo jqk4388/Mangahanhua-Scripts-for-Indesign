@@ -9,6 +9,11 @@
 main();
 
 function main() {
+    if (app.documents.length === 0) {
+        alert("请先打开一个文档。");
+        return;
+    }
+
     var doc = app.activeDocument;
     var targetLayerName = "[輔助定位] 完整矩形框";
     var ghostLayer = doc.layers.itemByName(targetLayerName);
@@ -42,8 +47,8 @@ function main() {
     for (var s = 0; s < textFrames.length; s++) {
         var selObj = textFrames[s];
 
-        // 只處理未鎖定的物件 (避免選到背景)
-        if (selObj.locked) continue;
+        // 跳過已鎖定或隱藏的物件 (避免選到背景或處理到隱藏內容)
+        if (shouldSkipFrame(selObj)) continue;
 
         // 【關鍵優化】：獲取選取物件所在的「容器」(通常是 Page 或 Spread)
         var parentPage = selObj.parent;
@@ -58,16 +63,17 @@ function main() {
         for (var i = 0; i < localItems.length; i++) {
             var item = localItems[i];
 
-            // 快速過濾 1: 必須是輔助圖層的物件
-            if (item.itemLayer.name !== targetLayerName) continue;
-
-            // 快速過濾 2: 判定相交，相交則記錄為候選配對
-            if (isIntersecting(selObj, item)) {
-                pairs.push({
-                    tf: selObj,
-                    ghost: item,
-                    dist: centerDistance(selObj, item)
-                });
+            try {
+                // 篩選：輔助圖層、未鎖定的物件，且與文字框相交
+                if (item.itemLayer.name === targetLayerName && !item.locked && isIntersecting(selObj, item)) {
+                    pairs.push({
+                        tf: selObj,
+                        ghost: item,
+                        dist: centerDistance(selObj, item)
+                    });
+                }
+            } catch (e) {
+                // 單一物件讀取失敗時跳過
             }
         }
     }
@@ -93,8 +99,12 @@ function main() {
 
         usedGhosts[ghostKey] = true;
         usedTfs[tfKey] = true;
-        alignCenter(pair.tf, pair.ghost);
-        alignCount++;
+        try {
+            alignCenter(pair.tf, pair.ghost);
+            alignCount++;
+        } catch (e) {
+            // 對齊失敗時跳過該配對，避免中斷整個流程
+        }
     }
     
         // 隐藏ghostLayer
@@ -105,6 +115,18 @@ function main() {
 }
 
 // --- 數學運算區 (無變更) ---
+
+// 判斷是否應跳過：已鎖定、隱藏或所在圖層隱藏
+function shouldSkipFrame(obj) {
+    try {
+        if (obj.locked) return true;
+        if (obj.visible === false) return true;
+        if (obj.itemLayer && obj.itemLayer.visible === false) return true;
+    } catch (e) {
+        return true; // 屬性讀取失敗時也跳過，避免中斷腳本
+    }
+    return false;
+}
 
 function isIntersecting(obj1, obj2) {
     var b1 = obj1.geometricBounds; // [y1, x1, y2, x2]

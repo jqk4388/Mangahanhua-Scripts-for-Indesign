@@ -1,5 +1,17 @@
+// 判断文本框是否应跳过：已锁定、对象隐藏或所在图层隐藏
+function shouldSkipFrame(tf) {
+    try {
+        if (tf.locked) return true
+        if (tf.visible === false) return true
+        if (tf.itemLayer && tf.itemLayer.visible === false) return true
+    } catch (e) {
+        return true // 属性读取失败时也跳过，避免中断脚本
+    }
+    return false
+}
+
 // 查找或删除空白文本框：弹出对话框询问是否删除所有空白文本框，或仅查找并定位第一个空白文本框。
-function findOrDeleteEmptyTextFramesˀ() {
+function findOrDeleteEmptyTextFrames() {
     if (!app.documents.length) {
         alert('当前没有打开的文档。')
         return false
@@ -16,7 +28,7 @@ function findOrDeleteEmptyTextFramesˀ() {
             for (var f = frames.length - 1; f >= 0; f--) {
                 try {
                     var tf = frames[f]
-                    if (tf.contents === '' && tf.overflows === false) {
+                    if (!shouldSkipFrame(tf) && tf.contents === '' && tf.overflows === false) {
                         tf.remove()
                         deletedCount++
                     }
@@ -37,11 +49,15 @@ function findOrDeleteEmptyTextFramesˀ() {
         for (var i = 0; i < doc.pages.length; i++) {
             var page = doc.pages[i]
             for (var j = 0; j < page.textFrames.length; j++) {
-                var tf2 = page.textFrames[j]
-                if (tf2.contents === '' && tf2.overflows === false) {
-                    app.selection = tf2
-                    alert('找到空白文本框，位于页：' + page.name + '。')
-                    return true
+                try {
+                    var tf2 = page.textFrames[j]
+                    if (!shouldSkipFrame(tf2) && tf2.contents === '' && tf2.overflows === false) {
+                        app.selection = tf2
+                        alert('找到空白文本框，位于页：' + page.name + '。')
+                        return true
+                    }
+                } catch (e) {
+                    // 跳过无法读取的文本框
                 }
             }
         }
@@ -50,4 +66,4 @@ function findOrDeleteEmptyTextFramesˀ() {
     }
 }
 
-findOrDeleteEmptyTextFramesˀ()
+findOrDeleteEmptyTextFrames()

@@ -1,5 +1,6 @@
 ﻿#include "../Library/KTUlib.jsx"
 var defaults = {
+    includeAllElements: false,
     oddPages: {
         enabled: true,
         scale: false,
@@ -23,10 +24,12 @@ function myDisplayDialog() {
     myDialog = app.dialogs.add({ name: "图像调整位置_精确数值" });
     var supportedPageRangeTypes = ["范围", "所有"];
     var pageRangeControl, pageRangeInput;
+    var includeAllCheckbox;
     var oddPages = {};
     var evenPages = {};
     with(myDialog) {
         with(dialogColumns.add()) {
+            includeAllCheckbox = checkboxControls.add({ staticLabel: "同时调整页面上所有元素（排除隐藏和锁定）", checkedState: defaults.includeAllElements });
             oddPages.enabledCheckbox = enablingGroups.add({ staticLabel: "奇数页", checkedState: defaults.oddPages.enabled });
             with(oddPages.enabledCheckbox) {
                 with(dialogColumns.add()) {
@@ -72,6 +75,7 @@ function myDisplayDialog() {
     var myReturn = myDialog.show();
     if (myReturn == true) {
         var needsReview = false;
+        var includeAllElements = includeAllCheckbox.checkedState;
         var selectedPageRange = pageRangeControl.selectedButton;
         var pageRange = selectedPageRange === 0 ? getValidRange(pageRangeInput.editContents, oddPages.enabledCheckbox.checkedState, evenPages.enabledCheckbox.checkedState) : doc.pages;
         var regex = /\d{3,4}(?=\_?\d?\d?[a-zA-Z]?\.[A-Za-z]{3,4})/;
@@ -88,9 +92,9 @@ function myDisplayDialog() {
             // shiftPage(page, parseInt(data.shiftRight.editValue), parseInt(data.shiftDown.editValue));
             // 去掉了取整函数
             if (data.scaleCheckbox.checkedState) {
-                scalePage(page, data.scaleFactor.editValue);
+                scalePage(page, data.scaleFactor.editValue, includeAllElements);
             };
-            shiftPage(page, data.shiftRight.editValue, data.shiftDown.editValue);
+            shiftPage(page, data.shiftRight.editValue, data.shiftDown.editValue, includeAllElements);
         }
 
         try {
@@ -143,28 +147,87 @@ function getValidRange(inp, includeOdd, includeEven) {
     return resArr.sort();
 }
 
-// resets the horizontal and vertical scale of all the graphics on a page to a given factor
-function scalePage(page, scaleFactor) {
+// collects the items on a page that need to be scaled/shifted
+// 默认只处理超出页边距的整页图像；勾选“同时调整页面上所有元素”后，
+// 按“选择页面上全部对象”脚本的方式获取页面所有元素（排除隐藏和锁定的元素）
+function getTransformTargets(page, includeAllElements) {
+    if (!includeAllElements) {
+        var graphics = page.allGraphics;
+        var res = [];
+        for (var i = 0; i < graphics.length; i++) {
+            if (isFramePastMargin(page, graphics[i].parent)) {
+                res.push({target: graphics[i], isGraphic: true});
+            }
+        }
+        return res;
+    }
+
+    var targets = [];
+    var pageItems = page.pageItems;
+    for (var i = 0; i < pageItems.length; i++) {
+        var item = pageItems[i];
+        if (item.locked || item.visible === false) continue;
+        if (item.itemLayer.locked || !item.itemLayer.visible) continue;
+        // 组内嵌套元素随组一起处理，避免重复移动/缩放
+        if (item.parent instanceof Group) continue;
+        if (item instanceof Group) {
+            // 编组作为整体进行移动和缩放
+            targets.push({target: item, isGraphic: false});
+        } else if (item.allGraphics.length > 0) {
+            var itemGraphics = item.allGraphics;
+            for (var j = 0; j < itemGraphics.length; j++) {
+                targets.push({target: itemGraphics[j], isGraphic: true});
+            }
+        } else {
+            targets.push({target: item, isGraphic: false});
+        }
+    }
+    return targets;
+}
+
+// 图像：直接设置“图像相对于图框的比例”（如：图框119.318%、想让图像从30.1875%变到31.52%，填 31.52/119.318*100≈26.42）
+// 非图像元素：按图像实际的放大倍数同比缩放。实际倍数 = 放大后有效倍率 / 放大前有效倍率
+//          = (图框倍率 × 输入值/100) / (图框倍率 × 原比例/100) = 输入值 / 图像原来的相对比例（图框倍率在计算中相消），
+//          而不是直接用输入值作为非图像元素的倍数
+function scalePage(page, scaleFactor, includeAllElements) {
     if (!page.isValid || scaleFactor === NaN) return;
 
-    var graphics = page.allGraphics;
-    for (var i = 0; i < graphics.length; i++) {
-        var gr = graphics[i];
-        if (isFramePastMargin(page, gr.parent)) {
-            gr.absoluteHorizontalScale = scaleFactor;
-            gr.absoluteVerticalScale = scaleFactor;
+    var targets = getTransformTargets(page, includeAllElements);
+
+    // 取页面上最大的图像（整页扫描图）作为倍数基准
+    var factor = scaleFactor / 100; // 页面上没有图像时，退回按 输入值/100 处理
+    var largestArea = -1;
+    for (var i = 0; i < targets.length; i++) {
+        if (!targets[i].isGraphic) continue;
+        var gr = targets[i].target;
+        var b = gr.parent.geometricBounds;
+        var area = (b[2] - b[0]) * (b[3] - b[1]);
+        var ratio = gr.absoluteHorizontalScale; // 图像当前相对于图框的比例
+        if (area > largestArea && ratio > 0) {
+            largestArea = area;
+            factor = scaleFactor / ratio;
+        }
+    }
+
+    for (var i = 0; i < targets.length; i++) {
+        var t = targets[i].target;
+        if (targets[i].isGraphic) {
+            t.absoluteHorizontalScale = scaleFactor;
+            t.absoluteVerticalScale = scaleFactor;
+        } else {
+            // 非图像元素：乘以图像实际的放大/缩小倍数
+            t.absoluteHorizontalScale = t.absoluteHorizontalScale * factor;
+            t.absoluteVerticalScale = t.absoluteVerticalScale * factor;
         }
     }
 }
 
-function shiftPage(page, right, down) {
+function shiftPage(page, right, down, includeAllElements) {
     if (right === 0 && down === 0) return;
 
-    for (var i = 0; i < page.allGraphics.length; i++) {
-        var gr = page.allGraphics[i];
-        if (isFramePastMargin(page, gr.parent)) {
-            gr.move(undefined, [right, down]);
-        }
+    var targets = getTransformTargets(page, includeAllElements);
+    for (var i = 0; i < targets.length; i++) {
+        targets[i].target.move(undefined, [right, down]);
     }
 }
 

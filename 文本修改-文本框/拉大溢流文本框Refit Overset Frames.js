@@ -8,93 +8,133 @@
 
     This is the same thing as doing `Object > Fitting > Fit Frame to Content`, but on a bunch of text frames at once. 
     UPDATE: Now the script will expand the frame by 1 pixel until it's no longer overset
+    新增: 勾选「对所有文本框执行【框架适合内容】」后，页面上的所有文本框都会执行适合内容；
+          不勾选时只处理溢流文本框。
 
     Installation Instructions: https://github.com/saraoswald/Manga-Scripts/#how-to-use-scripts-in-indesign
 
     Nov 21 2020, Sara Linsley
 */
 
-/* ------ Progress Bar Utility Functions ------ */
-
-// define popup at the top level to please the runtime
-var progressBarWindow = new Window("palette", "Refitting Overset Frames...");
-progressBarWindow.minimumSize = { width: 250, height: 50 }; // this can't be set during initialization despite what the documentation says!!
-var progressBar = progressBarWindow.add('progressbar', undefined, 'Progress');
-
-function progressBarStatusText(curr, maxValue) {
-    return curr.toString() + "/" + maxValue.toString();
-}
-
-function startProgressBar(maxValue) {
-    // get a little progress bar going
-    progressBar.maxvalue = maxValue;
-    progressBar.minimumSize = { width: 200, height: 10 };
-    // the static text's length can't be edited once it's initialized, so try to simulate how long the string will get
-    // (progressBar.minWidth does absolutely nothing)
-    progressBarWindow.add('statictext', undefined, progressBarStatusText(maxValue, maxValue));
-    progressBarWindow.show();
-}
-
-function updateProgressBar(curr) {
-    // update progress bar values + text
-    progressBar.value = curr;
-    progressBarWindow.children[1].text = progressBarStatusText(curr, progressBar.maxvalue);
-    progressBarWindow.update();
-}
-
-function destroyProgressBar() {
-    progressBarWindow.close();
-}
-
 /* ------ Start of Script ------ */
 
-var doc = app.activeDocument;
-var usersUnits = app.scriptPreferences.measurementUnit; // so we can revert 'em back later
-app.scriptPreferences.measurementUnit = MeasurementUnits.PIXELS;
+function main() {
+    if (app.documents.length === 0) {
+        alert("请先打开一个文档。");
+        return;
+    }
 
-function myDisplayDialog() {
-    myDialog = app.dialogs.add({ name: "Refit Overset Frames" });
-    var pageRangeControl;
-    with(myDialog) {
-        with(dialogColumns.add()) {
-            staticTexts.add({ staticLabel: "Fit all the overset frames on:" });
-            pageRangeControl = radiobuttonGroups.add();
-            with(pageRangeControl) {
-                radiobuttonControls.add({ staticLabel: "All Pages", checkedState: 0 });
-                radiobuttonControls.add({ staticLabel: "This Page", checkedState: 1 });
+    var options = showOptionsDialog();
+    if (!options) return; // 用户取消
+
+    var doc = app.activeDocument;
+    var usersUnits = app.scriptPreferences.measurementUnit; // so we can revert 'em back later
+    app.scriptPreferences.measurementUnit = MeasurementUnits.PIXELS;
+
+    try {
+        if (options.allPages) { // if "All Pages" is selected
+            fitAllPages(doc, options.fitAll);
+        } else { // if "This Page" is selected
+            var activeWin = app.activeWindow;
+            if (!activeWin || !activeWin.activePage) {
+                alert("无法获取当前页面，请重试。");
+                return;
             }
-            staticTexts.add({ staticLabel: '' });
+            fitFramesOnPage(activeWin.activePage, options.fitAll);
         }
+    } catch (err) {
+        alert(err);
+    } finally {
+        app.scriptPreferences.measurementUnit = usersUnits;
     }
-    var myReturn = myDialog.show();
-    if (myReturn == true) {
-        try {
-            if (pageRangeControl.selectedButton === 0) { // if "All Pages" is selected
-                startProgressBar(doc.pages.length);
-                for (var i = 0; i < doc.pages.length; i++) {
-                    fitFramesOnPage(doc.pages[i]);
-                    updateProgressBar(i + 1);
-                }
-                destroyProgressBar();
-            } else { // if "This Page" is selected 
-                fitFramesOnPage(app.activeWindow.activePage);
-            }
-        } catch (err) { alert(err) }
+}
 
-    } else {
-        myDialog.close();
+// 选项窗口：页面范围 + 是否对所有文本框执行【框架适合内容】
+function showOptionsDialog() {
+    var dialogWindow = new Window("dialog", "Refit Overset Frames");
+    dialogWindow.orientation = "column";
+    dialogWindow.alignChildren = "left";
+
+    dialogWindow.add("statictext", undefined, "Fit all the overset frames on:");
+
+    var pageGroup = dialogWindow.add("group");
+    pageGroup.orientation = "column";
+    pageGroup.alignChildren = "left";
+    var thisPageRadio = pageGroup.add("radiobutton", undefined, "This Page");
+    thisPageRadio.value = true;
+    var allPagesRadio = pageGroup.add("radiobutton", undefined, "All Pages");
+
+    var fitAllCheckbox = dialogWindow.add("checkbox", undefined, "对所有文本框执行【框架适合内容】");
+    fitAllCheckbox.value = false;
+
+    var buttonGroup = dialogWindow.add("group");
+    buttonGroup.alignment = "center";
+    var okButton = buttonGroup.add("button", undefined, "确定");
+    var cancelButton = buttonGroup.add("button", undefined, "取消");
+
+    var options = null;
+    okButton.onClick = function () {
+        options = {
+            allPages: allPagesRadio.value,
+            fitAll: fitAllCheckbox.value
+        };
+        dialogWindow.close();
+    };
+    cancelButton.onClick = function () {
+        dialogWindow.close();
+    };
+
+    dialogWindow.show();
+    return options;
+}
+
+// 遍历所有页面，并显示进度条
+function fitAllPages(doc, fitAll) {
+    var progressWindow = new Window("palette", "Refitting Overset Frames...");
+    progressWindow.orientation = "column";
+    progressWindow.alignChildren = "left";
+
+    var progressText = progressWindow.add("statictext", undefined, "0 / " + doc.pages.length);
+    progressText.preferredSize.width = 250;
+    var progressBar = progressWindow.add("progressbar", undefined, 0, doc.pages.length);
+    progressBar.preferredSize.width = 250;
+
+    try {
+        progressWindow.show();
+        for (var i = 0; i < doc.pages.length; i++) {
+            fitFramesOnPage(doc.pages[i], fitAll);
+            progressBar.value = i + 1;
+            progressText.text = (i + 1) + " / " + doc.pages.length;
+            progressWindow.update();
+        }
+    } finally {
+        progressWindow.close();
     }
-    app.scriptPreferences.measurementUnit = usersUnits;
+}
+
+// 判断文本框是否应跳过：已锁定、对象隐藏或所在图层隐藏
+function shouldSkipFrame(frame) {
+    try {
+        if (frame.locked) return true;
+        if (frame.visible === false) return true;
+        if (frame.itemLayer && frame.itemLayer.visible === false) return true;
+    } catch (err) {
+        return true; // 属性读取失败时也跳过，避免中断脚本
+    }
+    return false;
 }
 
 // on a given page, loops through all the text frames
-// if any of the text frames are overset, refit the frame to accomodate the content
-function fitFramesOnPage(page) {
-    try {
-        var textFrames = page.textFrames;
-        for (var i = 0; i < textFrames.length; i++) {
-            var frame = textFrames[i];
-            if (frame.overflows) {
+// if fitAll is true, refit every text frame to its content
+// otherwise only refit the frames that are overset
+// if a frame is still overset after fitting, expand it manually
+function fitFramesOnPage(page, fitAll) {
+    var textFrames = page.textFrames;
+    for (var i = 0; i < textFrames.length; i++) {
+        var frame = textFrames[i];
+        try {
+            // 跳过已锁定或隐藏的文本框，避免报错
+            if (!shouldSkipFrame(frame) && (frame.overflows || fitAll)) {
                 // try using InDesign's default Fit Frame to Content feature
                 frame.fit(FitOptions.FRAME_TO_CONTENT);
                 // if it doesn't work, expand the frame manually
@@ -102,16 +142,20 @@ function fitFramesOnPage(page) {
                     doFit(frame);
                 }
             }
+        } catch (err) {
+            // 单个文本框处理失败时跳过，继续处理其他文本框
         }
-    } catch (err) { alert(err) }
+    }
 }
 
 // recursive function that nudges the frame bounds out by 1
 // until the frame is no longer overset
-function doFit(frame) {
-    if (!frame.overflows) return;
+function doFit(frame, attempt) {
+    attempt = attempt || 0;
+    // 达到次数上限或文本框已锁定/隐藏时停止，避免无限递归报错
+    if (!frame.overflows || attempt >= 200 || frame.locked || frame.visible === false) return;
     expandFrame(frame, 5);
-    doFit(frame);
+    doFit(frame, attempt + 1);
 }
 
 // expands a given frame by a given unit
@@ -129,4 +173,8 @@ function transformCoords(src, trns) {
     ];
 }
 
-myDisplayDialog();
+try {
+    main();
+} catch (err) {
+    alert(err);
+}
