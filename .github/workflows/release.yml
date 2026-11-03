@@ -1,0 +1,48 @@
+name: Release
+
+# 推送版本号 tag（如 261103）时自动打包并发布 Release
+on:
+  push:
+    tags:
+      - '2[0-9][0-9][0-9][0-9][0-9]'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出（需要完整 tag 历史用于生成更新说明）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 打包 zip
+        shell: pwsh
+        run: ./tools/PackageRelease.ps1 -Tag "${{ github.ref_name }}"
+
+      - name: 生成更新说明
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          PREV="$(git tag --sort=-creatordate | grep -vx "$TAG" | head -n1)"
+          if [ -z "$PREV" ]; then
+            PREV="$(git rev-list --max-parents=0 HEAD)"
+          fi
+          {
+            echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${TAG}"
+            echo ""
+            git log --no-merges --pretty=format:'- %s' "${PREV}..${TAG}"
+          } > release_body.md
+          cat release_body.md
+
+      - name: 创建 Release 并上传 zip
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Mangahanhua-Scripts-for-Indesign_${{ github.ref_name }}
+          body_path: release_body.md
+          files: dist/*.zip
+          fail_on_unmatched_files: true

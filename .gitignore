@@ -1,5 +1,8 @@
 .*
-_build
+!.github/
+_build/*
+!_build/*.jsxbin
+dist/
 *.log
 manga_layout_config*.json
 *.pyc

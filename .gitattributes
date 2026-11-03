@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# 编译产物不得做换行转换，否则可能损坏脚本
+*.jsxbin -text
