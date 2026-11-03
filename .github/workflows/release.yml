@@ -5,9 +5,17 @@ on:
   push:
     tags:
       - '2[0-9][0-9][0-9][0-9][0-9]'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 要发布的版本号 tag（已推送的 tag）
+        required: true
 
 permissions:
   contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   release:
@@ -20,13 +28,12 @@ jobs:
 
       - name: 打包 zip
         shell: pwsh
-        run: ./tools/PackageRelease.ps1 -Tag "${{ github.ref_name }}"
+        run: ./tools/PackageRelease.ps1 -Tag "$env:TAG"
 
       - name: 生成更新说明
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
           PREV="$(git tag --sort=-creatordate | grep -vx "$TAG" | head -n1)"
           if [ -z "$PREV" ]; then
             PREV="$(git rev-list --max-parents=0 HEAD)"
@@ -41,8 +48,8 @@ jobs:
       - name: 创建 Release 并上传 zip
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Mangahanhua-Scripts-for-Indesign_${{ github.ref_name }}
+          tag_name: ${{ env.TAG }}
+          name: Mangahanhua-Scripts-for-Indesign_${{ env.TAG }}
           body_path: release_body.md
           files: dist/*.zip
           fail_on_unmatched_files: true
